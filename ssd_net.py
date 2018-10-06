@@ -3,7 +3,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 import util.module_util as module_util
 from mobilenet import MobileNet
+import os
 
+current_directory = os.getcwd() #current working directory
 
 class SSD(nn.Module):
     
@@ -19,21 +21,34 @@ class SSD(nn.Module):
 
         # Define the Additional feature extractor
         self.additional_feat_extractor = nn.ModuleList([
-            # Conv8_2
+            # Conv14_2
             nn.Sequential(
                 nn.Conv2d(in_channels=1024, out_channels=256, kernel_size=1),
                 nn.ReLU(),
                 nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, stride=2, padding=1),
                 nn.ReLU()
             ),
-            # Conv9_2
+            # Conv15_2
             nn.Sequential(
                 nn.Conv2d(in_channels=512, out_channels=128, kernel_size=1),
                 nn.ReLU(),
                 nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, stride=2, padding=1),
                 nn.ReLU()
             ),
-            # TODO: implement two more layers.
+            # Conv16_2
+            nn.Sequential(
+                nn.Conv2d(in_channels=256, out_channels=128, kernel_size=1),
+                nn.ReLU(),
+                nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, stride=1),
+                nn.ReLU()
+            ),
+            # Conv17_2
+            nn.Sequential(
+                nn.Conv2d(in_channels=256, out_channels=64, kernel_size=1),
+                nn.ReLU(),
+                nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, stride=1,padding=1),
+                nn.ReLU()
+            )
         ])
 
         # Bounding box offset regressor
@@ -42,6 +57,9 @@ class SSD(nn.Module):
             nn.Conv2d(in_channels=512, out_channels=num_prior_bbox * 4, kernel_size=3, padding=1),
             nn.Conv2d(in_channels=1024, out_channels=num_prior_bbox * 4, kernel_size=3, padding=1),
             nn.Conv2d(in_channels=512, out_channels=num_prior_bbox * 4, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=256, out_channels=num_prior_bbox * 4, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=256, out_channels=num_prior_bbox * 4, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=128, out_channels=num_prior_bbox * 4, kernel_size=3, padding=1)
             # TODO: implement remaining layers.
         ])
 
@@ -50,10 +68,17 @@ class SSD(nn.Module):
             nn.Conv2d(in_channels=512, out_channels=num_prior_bbox * num_classes, kernel_size=3, padding=1),
             nn.Conv2d(in_channels=1024, out_channels=num_prior_bbox * num_classes, kernel_size=3, padding=1),
             nn.Conv2d(in_channels=512, out_channels=num_prior_bbox * num_classes, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=256, out_channels=num_prior_bbox * num_classes, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=256, out_channels=num_prior_bbox * num_classes, kernel_size=3, padding=1),
+            nn.Conv2d(in_channels=128, out_channels=num_prior_bbox * num_classes, kernel_size=3, padding=1)
             # TODO: implement remaining layers.
         ])
 
         # Todo: load the pre-trained model for self.base_net, it will increase the accuracy by fine-tuning
+
+        pre_trained_model = os.path.join(current_directory,'pretrained/mobienetv2.pth')
+        pret_state =torch.load(pre_trained_model)
+        self.base_net.load_state_dict(pret_state)
 
         def init_with_xavier(m):
             if isinstance(m, nn.Conv2d):
@@ -101,10 +126,37 @@ class SSD(nn.Module):
         loc_list.append(loc)
 
         # Todo: implement run the backbone network from [11 to 13] and compute the corresponding bbox loc and confidence
+        #run from 11 to 13 in backbone and fetch confidence and loc_list
+        y = module_util.forward_from(self.base_net.conv_layers,self.base_output_layer_indices[0]+1,self.base_output_layer_indices[1]+1,y)
+        confidence, loc = self.feature_to_bbbox(self.loc_regressor[1],self.classifier[1],y)
         confidence_list.append(confidence)
         loc_list.append(loc)
 
         # Todo: forward the 'y' to additional layers for extracting coarse features
+
+        #run from mobile net output to 1 additional_feat_extractor
+        y = module_util.forward_from(self.additional_feat_extractor, 0,1, y)
+        confidence, loc = self.feature_to_bbbox(self.loc_regressor[2], self.classifier[2], y)
+        confidence_list.append(confidence)
+        loc_list.append(loc)
+
+        # run from 1 to 2 additional_feat_extractor
+        y = module_util.forward_from(self.additional_feat_extractor, 1, 2, y)
+        confidence, loc = self.feature_to_bbbox(self.loc_regressor[3], self.classifier[3], y)
+        confidence_list.append(confidence)
+        loc_list.append(loc)
+
+        # run from 2 to 3 additional_feat_extractor
+        y = module_util.forward_from(self.additional_feat_extractor, 2, 3, y)
+        confidence, loc = self.feature_to_bbbox(self.loc_regressor[4], self.classifier[4], y)
+        confidence_list.append(confidence)
+        loc_list.append(loc)
+
+        # run from 4 to last additional_feat_extractor
+        y = module_util.forward_from(self.additional_feat_extractor, 3, 4, y)
+        confidence, loc = self.feature_to_bbbox(self.loc_regressor[5], self.classifier[5], y)
+        confidence_list.append(confidence)
+        loc_list.append(loc)
 
         confidences = torch.cat(confidence_list, 1)
         locations = torch.cat(loc_list, 1)
