@@ -24,14 +24,16 @@ def generate_prior_bboxes(prior_layer_cfg):
     """
     example_prior_layer_cfg = [
         # Example:
-        {'layer_name': 'Conv4', 'feature_dim_hw': (64, 64), 'bbox_size': (60, 60), 'aspect_ratio': (1.0, 1 / 2, 1 / 3, 2.0, 3.0, 1.0)},
-        {'layer_name': 'Conv4', 'feature_dim_hw': (64, 64), 'bbox_size': (60, 60), 'aspect_ratio': (1.0, 1 / 2, 1 / 3, 2.0, 3.0, 1.0)}
+        {'layer_name': 'Conv4', 'feature_dim_hw': (64, 64), 'bbox_size': (60, 60),
+         'aspect_ratio': (1.0, 1 / 2, 1 / 3, 2.0, 3.0, 1.0)},
+        {'layer_name': 'Conv4', 'feature_dim_hw': (64, 64), 'bbox_size': (60, 60),
+         'aspect_ratio': (1.0, 1 / 2, 1 / 3, 2.0, 3.0, 1.0)}
         # ...
         # TODO: define your feature map settings
     ]
 
     priors_bboxes = []
-    for feat_level_idx in range(0, len(prior_layer_cfg)):               # iterate each layers
+    for feat_level_idx in range(0, len(prior_layer_cfg)):  # iterate each layers
         layer_cfg = prior_layer_cfg[feat_level_idx]
         layer_feature_dim = layer_cfg['feature_dim_hw']
         layer_aspect_ratio = layer_cfg['aspect_ratio']
@@ -41,7 +43,7 @@ def generate_prior_bboxes(prior_layer_cfg):
         fk = 0
 
         for y in range(0, layer_feature_dim[0]):
-            for x in range(0,layer_feature_dim[0]):
+            for x in range(0, layer_feature_dim[0]):
 
                 # Todo: compute bounding box center
                 cx = 0
@@ -64,6 +66,38 @@ def generate_prior_bboxes(prior_layer_cfg):
     return priors_bboxes
 
 
+def intersect(a_box, b_box):
+    A = a_box.size(0)
+    B = b_box.size(0)
+    print("intersect")
+    print(a_box)
+    print(b_box)
+    print(A)
+    print(B)
+
+    max_xy = torch.min(a_box[:, 2:].unsqueeze(1).expand(A, B, 2),
+                       b_box[:, 2:].unsqueeze(0).expand(A, B, 2))
+    min_xy = torch.max(a_box[:, :2].unsqueeze(1).expand(A, B, 2),
+                       b_box[:, :2].unsqueeze(0).expand(A, B, 2))
+    print(max_xy)
+    print(min_xy)
+
+    inter = torch.clamp((max_xy - min_xy), min=0)
+    print(inter)
+
+    intersect_area = inter[:, :, 0] * inter[:, :, 1]
+    print(intersect_area)
+
+    return intersect_area
+
+
+def area(box):
+    # area of rectangle
+    box_area = ((box[:, 2] - box[:, 0]) * (box[:, 3] - box[:, 1]))
+
+    return box_area
+
+
 def iou(a: torch.Tensor, b: torch.Tensor):
     """
     # Compute the Intersection over Union
@@ -79,7 +113,12 @@ def iou(a: torch.Tensor, b: torch.Tensor):
     assert b.shape[1] == 4
 
     # TODO: implement IoU of two bounding box
-    iou = None
+    # area (A union B) = area(A) + area(B) = area(A intersect B)
+    inter = intersect(a, b)
+    a_area = area(a).unsqueeze(1).expand_as(inter)
+    b_area = area(b).unsqueeze(0).expand_as(inter)
+    union = a_area + b_area - inter
+    iou = inter / union
 
     # [DEBUG] Check if output is the desire shape
     assert iou.dim() == 1
@@ -123,6 +162,8 @@ def match_priors(prior_bboxes: torch.Tensor, gt_bboxes: torch.Tensor, gt_labels:
 
 ''' NMS ----------------------------------------------------------------------------------------------------------------
 '''
+
+
 def nms_bbox(bbox_loc, bbox_confid_scores, overlap_threshold=0.5, prob_threshold=0.6):
     """
     Non-maximum suppression for computing best overlapping bounding box for a object
@@ -145,7 +186,6 @@ def nms_bbox(bbox_loc, bbox_confid_scores, overlap_threshold=0.5, prob_threshold
     # Todo: implement nms for filtering out the unnecessary bounding boxes
     num_classes = bbox_confid_scores.shape[1]
     for class_idx in range(0, num_classes):
-
         # Tip: use prob_threshold to set the prior that has higher scores and filter out the low score items for fast
         # computation
 
@@ -180,8 +220,8 @@ def loc2bbox(loc, priors, center_var=0.1, size_var=0.2):
 
     # real bounding box
     return torch.cat([
-        center_var * l_center * p_size + p_center,      # b_{center}
-        p_size * torch.exp(size_var * l_size)           # b_{size}
+        center_var * l_center * p_size + p_center,  # b_{center}
+        p_size * torch.exp(size_var * l_size)  # b_{size}
     ], dim=-1)
 
 
@@ -217,15 +257,15 @@ def center2corner(center):
     :param center: bounding box in center form (cx, cy, w, h)
     :return: bounding box in corner form (x,y) (x+w, y+h)
     """
-    return torch.cat([center[..., :2] - center[..., 2:]/2,
-                      center[..., :2] + center[..., 2:]/2], dim=-1)
+    return torch.cat([center[..., :2] - center[..., 2:] / 2,
+                      center[..., :2] + center[..., 2:] / 2], dim=-1)
 
 
 def corner2center(corner):
     """
-    Convert bounding box in center form (cx, cy, w, h) to corner form (x,y) (x+w, y+h)
-    :param center: bounding box in center form (cx, cy, w, h)
-    :return: bounding box in corner form (x,y) (x+w, y+h)
+    Convert bounding box from corner form (x,y) (x+w, y+h) to  center form (cx, cy, w, h)
+    :param center: bounding box in corner form (x,y) (x+w, y+h)
+    :return: bounding box in center form (cx, cy, w, h)
     """
-    return torch.cat([corner[..., :2] - corner[..., 2:]/2,
-                      corner[..., :2] + corner[..., 2:]/2], dim=-1)
+    return torch.cat([corner[..., 2:] + corner[..., :2] / 2,
+                      corner[..., 2:] - corner[..., :2]], dim=-1)
