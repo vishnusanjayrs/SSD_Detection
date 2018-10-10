@@ -1,7 +1,10 @@
 import torch
+import math
 
 ''' Prior Bounding Box  ------------------------------------------------------------------------------------------------
 '''
+img_h = 300
+img_w = 300
 
 
 def generate_prior_bboxes(prior_layer_cfg):
@@ -33,32 +36,55 @@ def generate_prior_bboxes(prior_layer_cfg):
     ]
 
     priors_bboxes = []
+    #init k+1 bbox size to avoid error
+
     for feat_level_idx in range(0, len(prior_layer_cfg)):  # iterate each layers
+        print("feat_level_idx")
+        print(feat_level_idx)
         layer_cfg = prior_layer_cfg[feat_level_idx]
         layer_feature_dim = layer_cfg['feature_dim_hw']
         layer_aspect_ratio = layer_cfg['aspect_ratio']
+        bbox_dim = layer_cfg['bbox_size']
 
         # Todo: compute S_{k} (reference: SSD Paper equation 4.)
-        sk = 0
-        fk = 0
+        sk = bbox_dim[0] / img_h
+        if feat_level_idx == len(prior_layer_cfg)-1:
+            print("skplus1 here")
+            skplus1 = 1.04
+        else:
+            layer_cfgplus1 = prior_layer_cfg[feat_level_idx+1]
+            bbox_plus1 = layer_cfgplus1['bbox_size']
+            skplus1 = bbox_plus1[0]/img_h
 
+        fk = layer_feature_dim[0]
+        bbox = []
         for y in range(0, layer_feature_dim[0]):
             for x in range(0, layer_feature_dim[0]):
 
                 # Todo: compute bounding box center
-                cx = 0
-                cy = 0
+                cx = (x + 0.5) / fk
+                cy = (y + 0.5) / fk
 
                 # Todo: generate prior bounding box with respect to the aspect ratio
                 for aspect_ratio in layer_aspect_ratio:
-                    h = 0
-                    w = 0
-                    priors_bboxes.append([cx, cy, w, h])
+                    if aspect_ratio == 1:
+                        h = sk
+                        w = sk
+                        priors_bboxes.append([cx, cy, w, h])
+                        h = math.sqrt(sk * skplus1)
+                        w = math.sqrt(sk * skplus1)
+                        priors_bboxes.append([cx, cy, w, h])
+                    else:
+                        h = sk/math.sqrt(aspect_ratio)
+                        w = sk*math.sqrt(aspect_ratio)
+                        priors_bboxes.append([cx, cy, w, h])
+                        priors_bboxes.append([cx, cy, h, w])
 
     # Convert to Tensor
     priors_bboxes = torch.tensor(priors_bboxes)
     priors_bboxes = torch.clamp(priors_bboxes, 0.0, 1.0)
     num_priors = priors_bboxes.shape[0]
+    print(num_priors)
 
     # [DEBUG] check the output shape
     assert priors_bboxes.dim() == 2
@@ -150,6 +176,7 @@ def match_priors(prior_bboxes: torch.Tensor, gt_bboxes: torch.Tensor, gt_labels:
     matched_labels = None
 
     # TODO: implement prior matching
+    overlaps = iou(gt_bboxes, center2corner(prior_bboxes))
 
     # [DEBUG] Check if output is the desire shape
     assert matched_boxes.dim() == 2

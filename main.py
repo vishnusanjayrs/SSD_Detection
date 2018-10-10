@@ -65,7 +65,7 @@ if __name__ == '__main__':
 
     print(images[0])
 
-    lsit =[]
+    lsit = []
 
     for i in range(image_ll_len):
         lsit.append(image_label_list[i]['label'])
@@ -83,13 +83,17 @@ if __name__ == '__main__':
         image_path = os.path.join(current_directory, images_path, img_folder, img_name)
         image = Image.open(image_path)
         b_boxes = []
-        labels  = []
+        labels = []
         for i in range(image_ll_len):
             if image_label_list[i]["image_name"] == img_iden:
                 bbox = image_label_list[i]['bbox']
                 b_boxes.append(bbox)
-                if image_label_list[i]['label'] in ('cargroup' ,'car') :
-                    label =1
-                elif image_label_list[i]['label'] in ('person' ,'persongroup') :
-                    label =2
-                elif
+                if image_label_list[i]['label']  == 'car':
+                    label = 1
+                elif image_label_list[i]['label'] == 'person':
+                    label = 2
+                elif image_label_list[i]['label'] == 'trafficsign':
+                    label = 3
+                else:
+                    label = 0
+                labels.append(label)
