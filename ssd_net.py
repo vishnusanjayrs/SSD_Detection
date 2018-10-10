@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import util.module_util as module_util
+import module_util
 from mobilenet import MobileNet
 import os
 
@@ -164,10 +164,10 @@ class SSD(nn.Module):
         locations = torch.cat(loc_list, 1)
 
         # [Debug] check the output
-        assert confidence.dim() == 3  # should be (N, num_priors, num_classes)
-        assert locations.dim() == 3  # should be (N, num_priors, 4)
-        assert confidence.shape[1] == locations.shape[1]
-        assert locations.shape[2] == 4
+        # assert confidence.dim() == 3  # should be (N, num_priors, num_classes)
+        # assert locations.dim() == 3  # should be (N, num_priors, 4)
+        # assert confidence.shape[1] == locations.shape[1]
+        # assert locations.shape[2] == 4
 
         if not self.training:
             # If in testing/evaluating mode, normalize the output with Softmax
