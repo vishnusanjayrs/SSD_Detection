@@ -36,7 +36,7 @@ def generate_prior_bboxes(prior_layer_cfg):
     ]
 
     priors_bboxes = []
-    #init k+1 bbox size to avoid error
+    # init k+1 bbox size to avoid error
 
     for feat_level_idx in range(0, len(prior_layer_cfg)):  # iterate each layers
         print("feat_level_idx")
@@ -48,13 +48,13 @@ def generate_prior_bboxes(prior_layer_cfg):
 
         # Todo: compute S_{k} (reference: SSD Paper equation 4.)
         sk = bbox_dim[0] / img_h
-        if feat_level_idx == len(prior_layer_cfg)-1:
+        if feat_level_idx == len(prior_layer_cfg) - 1:
             print("skplus1 here")
             skplus1 = 1.04
         else:
-            layer_cfgplus1 = prior_layer_cfg[feat_level_idx+1]
+            layer_cfgplus1 = prior_layer_cfg[feat_level_idx + 1]
             bbox_plus1 = layer_cfgplus1['bbox_size']
-            skplus1 = bbox_plus1[0]/img_h
+            skplus1 = bbox_plus1[0] / img_h
 
         fk = layer_feature_dim[0]
         bbox = []
@@ -75,8 +75,8 @@ def generate_prior_bboxes(prior_layer_cfg):
                         w = math.sqrt(sk * skplus1)
                         priors_bboxes.append([cx, cy, w, h])
                     else:
-                        h = sk/math.sqrt(aspect_ratio)
-                        w = sk*math.sqrt(aspect_ratio)
+                        h = sk / math.sqrt(aspect_ratio)
+                        w = sk * math.sqrt(aspect_ratio)
                         priors_bboxes.append([cx, cy, w, h])
                         priors_bboxes.append([cx, cy, h, w])
 
@@ -85,6 +85,7 @@ def generate_prior_bboxes(prior_layer_cfg):
     priors_bboxes = torch.clamp(priors_bboxes, 0.0, 1.0)
     num_priors = priors_bboxes.shape[0]
     print(num_priors)
+    print(priors_bboxes.dim)
 
     # [DEBUG] check the output shape
     assert priors_bboxes.dim() == 2
@@ -95,24 +96,15 @@ def generate_prior_bboxes(prior_layer_cfg):
 def intersect(a_box, b_box):
     A = a_box.size(0)
     B = b_box.size(0)
-    print("intersect")
-    print(a_box)
-    print(b_box)
-    print(A)
-    print(B)
 
     max_xy = torch.min(a_box[:, 2:].unsqueeze(1).expand(A, B, 2),
                        b_box[:, 2:].unsqueeze(0).expand(A, B, 2))
     min_xy = torch.max(a_box[:, :2].unsqueeze(1).expand(A, B, 2),
                        b_box[:, :2].unsqueeze(0).expand(A, B, 2))
-    print(max_xy)
-    print(min_xy)
 
     inter = torch.clamp((max_xy - min_xy), min=0)
-    print(inter)
 
     intersect_area = inter[:, :, 0] * inter[:, :, 1]
-    print(intersect_area)
 
     return intersect_area
 
@@ -138,6 +130,8 @@ def iou(a: torch.Tensor, b: torch.Tensor):
     assert b.dim() == 2
     assert b.shape[1] == 4
 
+    print("in IOu")
+
     # TODO: implement IoU of two bounding box
     # area (A union B) = area(A) + area(B) = area(A intersect B)
     inter = intersect(a, b)
@@ -146,8 +140,11 @@ def iou(a: torch.Tensor, b: torch.Tensor):
     union = a_area + b_area - inter
     iou = inter / union
 
+    print(iou.shape)
+    print(a.shape)
+
     # [DEBUG] Check if output is the desire shape
-    assert iou.dim() == 1
+    assert iou.dim() == 2
     assert iou.shape[0] == a.shape[0]
     return iou
 
@@ -172,11 +169,35 @@ def match_priors(prior_bboxes: torch.Tensor, gt_bboxes: torch.Tensor, gt_labels:
     assert prior_bboxes.dim() == 2
     assert prior_bboxes.shape[1] == 4
 
-    matched_boxes = None
-    matched_labels = None
+    print("In match_priors ")
 
-    # TODO: implement prior matching
-    overlaps = iou(gt_bboxes, center2corner(prior_bboxes))
+    gtpr_iou = iou(gt_bboxes, center2corner(prior_bboxes))
+
+    # best prior for each ground truth
+
+    best_prior, best_prior_idx = gtpr_iou.max(1, keepdim=True)
+
+    # best ground truth for each prior
+
+    best_gt, best_gt_idx = gtpr_iou.max(0, keepdim=True)
+
+    best_gt_idx.squeeze_(0)
+    best_gt.squeeze_(0)
+    best_prior_idx.squeeze_(1)
+    best_prior.squeeze_(1)
+    best_gt_idx.index_fill_(0, best_prior_idx, 2)  # ensure best prior
+    # ensure every gt matches with its prior of max overlap
+    for j in range(best_prior_idx.size(0)):
+        best_gt_idx[best_prior_idx[j]] = j
+    matched_boxes = gt_bboxes[best_gt_idx]
+
+    matched_labels = gt_labels[best_gt_idx] + 1
+    matched_labels[best_gt < iou_threshold] = 0  # using iou_threshold to set background
+
+    print(matched_boxes.dim())
+    print(matched_boxes.shape)
+    print(matched_labels.dim())
+    print(matched_labels.shape)
 
     # [DEBUG] Check if output is the desire shape
     assert matched_boxes.dim() == 2
@@ -247,8 +268,8 @@ def loc2bbox(loc, priors, center_var=0.1, size_var=0.2):
 
     # real bounding box
     return torch.cat([
-        center_var * l_center * p_size + p_center,  # b_{center}
-        p_size * torch.exp(size_var * l_size)  # b_{size}
+        center_var * l_center * p_size + p_center,      # b_{center}
+        p_size * torch.exp(size_var * l_size)           # b_{size}
     ], dim=-1)
 
 

@@ -10,23 +10,30 @@ from collections import OrderedDict
 
 # torch.set_default_tensor_type('torch.cuda.FloatTensor')
 #
-# current_directory = os.getcwd()  # current working directory
+current_directory = os.getcwd()  # current working directory
 #
 # model = ssd_net.SSD(num_classes=4)
 # func = module_util.summary_layers(model, (3, 300, 300))
 
-# net = mobilenet.MobileNet()
-#
-#
-# pre_trained_model = os.path.join(current_directory, 'pretrained/mobienetv2.pth')
-#
-# pret_state = torch.load(pre_trained_model)
-# print(type(pret_state))
-# print(pret_state.keys())
-# print(net.state_dict().keys())
-# print(len(pret_state))
-# print(len(net.state_dict()))
-# net.load_state_dict(pret_state)
+net = mobilenet.MobileNet()
+net_state = net.state_dict()
+
+
+pre_trained_model = os.path.join(current_directory, 'pretrained/mobienetv2.pth')
+
+pret_state = torch.load(pre_trained_model)
+print(pret_state.keys())
+pret_state = {k: v for k, v in pret_state.items() if k in net.state_dict()}
+
+net_state.update(pret_state)
+net.load_state_dict(net_state)
+
+print(type(pret_state))
+print(pret_state.keys())
+print(net.state_dict().keys())
+print(len(pret_state))
+print(len(net.state_dict()))
+#net.load_state_dict(pret_state)
 
 # prior_layer_cfg = [{'layer_name': 'Conv11', 'feature_dim_hw': (19, 19), 'bbox_size': (60, 60),
 #                             'aspect_ratio': (1.0, 1 / 2, 1 / 3, 2.0, 3.0, 1.0)},

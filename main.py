@@ -9,8 +9,8 @@ from glob import glob
 import numpy as np
 import json
 from PIL import Image
-#import matplotlib.pyplot as plt
-#import matplotlib.patches as pat
+# import matplotlib.pyplot as plt
+# import matplotlib.patches as pat
 import torch
 import random
 
@@ -30,8 +30,6 @@ if __name__ == '__main__':
 
     poly_folders = np.array(poly_folders)
 
-    print(poly_folders.shape)
-
     image_label_list = []
 
     for file in poly_folders:
@@ -47,11 +45,9 @@ if __name__ == '__main__':
                 polygon = np.array(frame_info['objects'][i]['polygon'], dtype=np.float32)
                 left_top = np.min(polygon, axis=0)
                 right_bottom = np.max(polygon, axis=0)
-                ltrb = np.concatenate((left_top, right_bottom)).reshape(1, -1)
+                ltrb = np.concatenate((left_top, right_bottom))
                 image_label_list.append(
                     {'image_name': image_name, 'file_path': file_path, 'label': label, 'bbox': ltrb})
-
-    print(image_label_list)
 
     image_ll_len = len(image_label_list)
 
@@ -63,8 +59,6 @@ if __name__ == '__main__':
 
     images = np.array(images)
 
-    print(len(images))
-
     # lsit = []
     #
     # for i in range(image_ll_len):
@@ -73,13 +67,9 @@ if __name__ == '__main__':
     # print(np.asarray(set(lsit)))
 
     train_valid_datlist = []
-    for i in range(0,len(images)):
-        print(images[i])
-        print(images[i].split("/"))
+    for i in range(0, len(images)):
         img_folder = images[i].split('/')[-2]
         img_name = images[i].split('/')[-1]
-        print(img_folder)
-        print(img_name[:-16])
         img_iden = img_name[:-16]
         image_path = os.path.join(current_directory, images_path, img_folder, img_name)
         b_boxes = []
@@ -88,9 +78,9 @@ if __name__ == '__main__':
             if image_label_list[i]["image_name"] == img_iden:
                 bbox = image_label_list[i]['bbox']
                 b_boxes.append(bbox)
-                if image_label_list[i]['label'] in  ('car','cargroup'):
+                if image_label_list[i]['label'] in ('car', 'cargroup'):
                     label = 1
-                elif image_label_list[i]['label'] in ('person','persongroup') :
+                elif image_label_list[i]['label'] in ('person', 'persongroup'):
                     label = 2
                 elif image_label_list[i]['label'] == 'traffic sign':
                     label = 3
@@ -101,9 +91,6 @@ if __name__ == '__main__':
 
     random.shuffle(train_valid_datlist)
     total_training_validation_items = len(train_valid_datlist)
-    print
-    print(len(train_valid_datlist))
-
 
     # Training dataset.
     n_train_sets = training_ratio * total_training_validation_items
@@ -117,5 +104,4 @@ if __name__ == '__main__':
     train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=1, shuffle=True, num_workers=0)
     print('Total training items', len(train_dataset), ', Total training batches per epoch:', len(train_data_loader))
 
-    train_batch_idx, (train_input, train_label) =  next(enumerate(train_data_loader))
-
+    train_batch_idx, (train_input, train_label) = next(enumerate(train_data_loader))

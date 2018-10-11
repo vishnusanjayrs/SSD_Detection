@@ -75,9 +75,13 @@ class SSD(nn.Module):
         ])
 
         # Todo: load the pre-trained model for self.base_net, it will increase the accuracy by fine-tuning
+        net_state = self.base_net.state_dict()
+        pre_trained_model = os.path.join(current_directory, 'pretrained/mobienetv2.pth')
+        pret_state = torch.load(pre_trained_model)
+        pret_state = {k: v for k, v in pret_state.items() if k in net_state}
+        net_state.update(pret_state)
+        self.base_net.load_state_dict(net_state)
 
-        # pre_trained_model = os.path.join(current_directory, 'pretrained/mobienetv2.pth')
-        # pret_state = torch.load(pre_trained_model)
         # self.base_net.load_state_dict(pret_state)
 
         def init_with_xavier(m):

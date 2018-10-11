@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 class CityScapeDataset(Dataset):
     def __init__(self, dataset_list):
         self.dataset_list = dataset_list
-        self.image_size =300
+        self.image_size = 300
 
         # TODO: implement prior bounding box
         """
@@ -70,31 +70,25 @@ class CityScapeDataset(Dataset):
         # 4. Normalize the bounding box position value from 0 to 1
         item = self.dataset_list[idx]
         self.image_path = item['image_path']
-        self.labels = item['labels']
-        self.labels = torch.Tensor(np.array(self.labels, dtype=np.float32))
+        self.labels = np.asarray(item['labels'])
+        self.labels =torch.Tensor(self.labels)
         self.bboxes = item['bboxes']
-        self.bboxes = np.array(self.bboxes, dtype=np.float32)
-        self.bboxes = torch.Tensor(self.bboxes)
-        print(self.image_path)
-        print(self.labels)
-        print(self.bboxes)
-        print(self.labels.shape)
+        self.bboxes = torch.Tensor(np.asarray(item['bboxes'],dtype=np.float32))
         print(self.bboxes.shape)
 
-        img =Image.open(self.image_path)
+        img = Image.open(self.image_path)
 
         w, h = img.size
         self.bboxes /= torch.Tensor([w, h, w, h]).expand_as(self.bboxes)
-        print(self.bboxes)
 
-        #resize image
-        img =img.resize((self.image_size,self.image_size),Image.ANTIALIAS)
-        #normlaize_img
+        # resize image
+        img = img.resize((self.image_size, self.image_size), Image.ANTIALIAS)
+        # normalize_img
         img = np.asarray(img, dtype=np.float32)
         # normalise the image pixels to (-1,1)
         img = (img / 255.0) * 2 - 1
 
-        #convert to tensor
+        # convert to tensor
         img_tensor = torch.Tensor(img.astype(float))
         img_tensor = img_tensor.view((img.shape[2], img.shape[0], img.shape[1]))
 
@@ -151,8 +145,6 @@ class CityScapeDataset(Dataset):
                     crop_label.append(self.labels[i])
         '''
 
-
-
         # 4. Do the augmentation if needed. e.g. random clip the bounding box or flip the bounding box
 
         # 5. Do the matching prior and generate ground-truth labels as well as the boxes
@@ -167,4 +159,4 @@ class CityScapeDataset(Dataset):
         # assert bbox_label_tensor.dim() == 1
         # assert bbox_label_tensor.shape[0] == bbox_tensor.shape[0]
 
-        return img_tensor,0
+        return 0, 0
