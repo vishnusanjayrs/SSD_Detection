@@ -136,7 +136,6 @@ def iou(a: torch.Tensor, b: torch.Tensor):
     union = a_area + b_area - inter
     iou = inter / union
 
-
     # [DEBUG] Check if output is the desire shape
     assert iou.dim() == 2
     assert iou.shape[0] == a.shape[0]
@@ -177,9 +176,7 @@ def match_priors(prior_bboxes: torch.Tensor, gt_bboxes: torch.Tensor, gt_labels:
 
     best_prior, best_prior_idx = gtpr_iou.max(1, keepdim=True)
 
-
     best_gt, best_gt_idx = gtpr_iou.max(0, keepdim=True)
-
 
     best_gt_idx.squeeze_(0)
     best_gt.squeeze_(0)
@@ -191,7 +188,6 @@ def match_priors(prior_bboxes: torch.Tensor, gt_bboxes: torch.Tensor, gt_labels:
     for j in range(best_prior_idx.size(0)):
         best_gt_idx[best_prior_idx[j]] = j
     matched_boxes = gt_bboxes[best_gt_idx]
-
 
     variances = [0.1, 0.2]
     cxcy = (matched_boxes[:, :2] + matched_boxes[:, 2:]) / 2 - prior_bboxes[:, :2]  # [8732,2]
@@ -238,27 +234,52 @@ def nms_bbox(bbox_loc, bbox_confid_scores, overlap_threshold=0.5, prob_threshold
     sel_bbox = []
 
     # Todo: implement nms for filtering out the unnecessary bounding boxes
-    #convert bboxes from center format to corner format
-    bbox_loc = center2corner(bbox_loc)
+    # convert bboxes from center format to corner format
+    bbox_loc_c = center2corner(bbox_loc)
     num_classes = bbox_confid_scores.shape[1]
     for class_idx in range(0, num_classes):
         # Tip: use prob_threshold to set the prior that has higher scores and filter out the low score items for fast
         # computation
-        #filtering scores using probability threshold
+        # filtering scores using probability threshold
         bbx_class_scores = bbox_confid_scores[:, class_idx]
         filtered_pos = bbx_class_scores > prob_threshold
         mask = filtered_pos.unsqueeze_(1).expand_as(bbx_class_scores)
         prob_fil_scores = bbx_class_scores[mask]
 
         pick = []
-        l = bbox_loc[:, 0]
-        t = bbox_loc[:, 1]
-        r = bbox_loc[:, 2]
-        b = bbox_loc[:, 3]
+        l = bbox_loc_c[:, 0]
+        t = bbox_loc_c[:, 1]
+        r = bbox_loc_c[:, 2]
+        b = bbox_loc_c[:, 3]
 
-        #calculating area
+        # calculating area
         areas = (r - l) * (b - t)
-        order = prob_fil_scores.argsort()[::-1]
+        sorted_scores, order = prob_fil_scores.sort(0, descending=True)
+
+        while order.numel() > 0:
+            i = order[0]
+            pick.append(i)
+
+            if order.numel == 1:
+                break
+
+            xx1 = l[order[1:]].clamp(min=l[i])
+            yy1 = t[order[1:]].clamp(min=t[i])
+            xx2 = r[order[1:]].clamp(max=r[i])
+            yy2 = b[order[1:]].clamp(max=b[i])
+
+            w = (xx2 - xx1).clamp(min=0)
+            h = (yy2 - yy1).clamp(min=0)
+            inter = w * h
+
+            ovr = inter / (areas[i] + areas[order[1:]] - inter)
+
+            ids = (ovr <= overlap_threshold).nonzero().squeeze()
+            if ids.numel() == 0:
+                break
+            order = order[ids + 1]
+
+        sel_bbox = bbox_loc[pick]
 
     return sel_bbox
 
