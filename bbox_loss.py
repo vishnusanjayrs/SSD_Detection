@@ -47,22 +47,36 @@ class MultiboxLoss(nn.Module):
         :return:
         """
         # Do the hard negative mining and produce balanced positive and negative examples
+        print("in multibox forward")
+        print(confidence.shape)
+        print(pred_loc.shape)
+        print(gt_class_labels.shape)
+        print(gt_bbox_loc.shape)
         with torch.no_grad():
             neg_class_prob = -F.log_softmax(confidence, dim=2)[:, :, self.neg_label_idx]      # select neg. class prob.
             pos_flag, neg_flag = hard_negative_mining(neg_class_prob, gt_class_labels, neg_pos_ratio=self.neg_pos_ratio)
             sel_flag = pos_flag | neg_flag
-            num_pos = pos_flag.sum(dim=1, keepdim=True)
+            num_pos = pos_flag.sum(dim=1, keepdim=True).float()
 
         # Loss for the classification
         num_classes = confidence.shape[2]
         sel_conf = confidence[sel_flag]
         conf_loss = F.cross_entropy(sel_conf.reshape(-1, num_classes), gt_class_labels[sel_flag]) / num_pos
+        print(conf_loss.shape)
 
 
 
         # Loss for the bounding box prediction
-        loc_huber_loss = None
         # TODO: implementation on bounding box regression
-        F.smooth_l1_loss()
+        batch_size , num_priors , locs = pred_loc.size()
+        pos = confidence > 0 #box matchedl
+        number_bbox_matched = pos.data.sum().float()
+        pos_mask = pos.unsqueeze(2).expand_as(pred_loc)
+        pos_pred_locs = pred_loc[pos_mask].view(-1, 4)
+        pos_loc_targets = gt_bbox_loc[pos_mask].view(-1, 4)
+
+        loc_huber_loss = F.smooth_l1_loss(pos_pred_locs, pos_loc_targets, size_average=False) / number_bbox_matched
+
+        print(loc_huber_loss.shape)
 
         return conf_loss, loc_huber_loss

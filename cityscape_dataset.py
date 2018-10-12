@@ -17,7 +17,8 @@ class CityScapeDataset(Dataset):
 
             Use VGG_SSD 300x300 as example:
             Feature map dimension for each output layers:
-               Layer    | Map Dim (h, w) | Single bbox size that covers in the original image
+               Layer     | Map Dim (h, w)  | Single bbox size that covers in the original image
+            1. Conv6     | (38x38)         | (30x30) (unit. pixels)
             1. Conv11    | (19x19)        | (60x60) (unit. pixels)
             2. Conv13    | (10x10)        | (113x113)
             3. Conv14_2  | (5x5)          | (165x165)
@@ -29,7 +30,9 @@ class CityScapeDataset(Dataset):
             :param prior_layer_cfg: configuration for each feature layer, see the 'example_prior_layer_cfg' in the following.
             :return prior bounding boxes with form of (cx, cy, w, h), where the value range are from 0 to 1, dim (1, num_priors, 4)
             """
-        prior_layer_cfg = [{'layer_name': 'Conv11', 'feature_dim_hw': (19, 19), 'bbox_size': (60, 60),
+        prior_layer_cfg = [{'layer_name': 'Conv6', 'feature_dim_hw': (38, 38), 'bbox_size': (30, 30),
+                            'aspect_ratio': (1.0, 1 / 2, 1 / 3, 2.0, 3.0)},
+                           {'layer_name': 'Conv11', 'feature_dim_hw': (19, 19), 'bbox_size': (60, 60),
                             'aspect_ratio': (1.0, 1 / 2, 1 / 3, 2.0, 3.0)},
                            {'layer_name': 'Conv13', 'feature_dim_hw': (10, 10), 'bbox_size': (102, 102),
                             'aspect_ratio': (1.0, 1 / 2, 1 / 3, 2.0, 3.0)},
@@ -71,9 +74,9 @@ class CityScapeDataset(Dataset):
         item = self.dataset_list[idx]
         self.image_path = item['image_path']
         self.labels = np.asarray(item['labels'])
-        self.labels =torch.Tensor(self.labels)
+        self.labels = torch.Tensor(self.labels)
         self.bboxes = item['bboxes']
-        self.bboxes = torch.Tensor(np.asarray(item['bboxes'],dtype=np.float32))
+        self.bboxes = torch.Tensor(np.asarray(item['bboxes'], dtype=np.float32))
         print(self.bboxes.shape)
 
         img = Image.open(self.image_path)
@@ -159,4 +162,4 @@ class CityScapeDataset(Dataset):
         # assert bbox_label_tensor.dim() == 1
         # assert bbox_label_tensor.shape[0] == bbox_tensor.shape[0]
 
-        return 0, 0
+        return img_tensor, bbox_tensor, bbox_label_tensor

@@ -57,7 +57,6 @@ def generate_prior_bboxes(prior_layer_cfg):
             skplus1 = bbox_plus1[0] / img_h
 
         fk = layer_feature_dim[0]
-        bbox = []
         for y in range(0, layer_feature_dim[0]):
             for x in range(0, layer_feature_dim[0]):
 
@@ -78,7 +77,6 @@ def generate_prior_bboxes(prior_layer_cfg):
                         h = sk / math.sqrt(aspect_ratio)
                         w = sk * math.sqrt(aspect_ratio)
                         priors_bboxes.append([cx, cy, w, h])
-                        priors_bboxes.append([cx, cy, h, w])
 
     # Convert to Tensor
     priors_bboxes = torch.tensor(priors_bboxes)
@@ -130,8 +128,6 @@ def iou(a: torch.Tensor, b: torch.Tensor):
     assert b.dim() == 2
     assert b.shape[1] == 4
 
-    print("in IOu")
-
     # TODO: implement IoU of two bounding box
     # area (A union B) = area(A) + area(B) = area(A intersect B)
     inter = intersect(a, b)
@@ -140,8 +136,6 @@ def iou(a: torch.Tensor, b: torch.Tensor):
     union = a_area + b_area - inter
     iou = inter / union
 
-    print(iou.shape)
-    print(a.shape)
 
     # [DEBUG] Check if output is the desire shape
     assert iou.dim() == 2
@@ -173,31 +167,42 @@ def match_priors(prior_bboxes: torch.Tensor, gt_bboxes: torch.Tensor, gt_labels:
 
     gtpr_iou = iou(gt_bboxes, center2corner(prior_bboxes))
 
-    # best prior for each ground truth
+    # iou_val, max_idx = gtpr_iou.max(0, keepdim=True)
+    # max_idx.squeeze_(0)
+    # iou_val.squeeze_(0)
+    # print(iou_val.shape)
+    # print(max_idx.shape)
+    #
+    # matched_boxes = gt_bboxes[max_idx]
 
     best_prior, best_prior_idx = gtpr_iou.max(1, keepdim=True)
 
-    # best ground truth for each prior
 
     best_gt, best_gt_idx = gtpr_iou.max(0, keepdim=True)
+
 
     best_gt_idx.squeeze_(0)
     best_gt.squeeze_(0)
     best_prior_idx.squeeze_(1)
     best_prior.squeeze_(1)
     best_gt_idx.index_fill_(0, best_prior_idx, 2)  # ensure best prior
+
     # ensure every gt matches with its prior of max overlap
     for j in range(best_prior_idx.size(0)):
         best_gt_idx[best_prior_idx[j]] = j
     matched_boxes = gt_bboxes[best_gt_idx]
 
+
+    variances = [0.1, 0.2]
+    cxcy = (matched_boxes[:, :2] + matched_boxes[:, 2:]) / 2 - prior_bboxes[:, :2]  # [8732,2]
+    cxcy /= variances[0] * prior_bboxes[:, 2:]
+    wh = (matched_boxes[:, 2:] - matched_boxes[:, :2]) / prior_bboxes[:, 2:]  # [8732,2]
+    wh = torch.log(wh) / variances[1]
+
+    matched_boxes = torch.cat([cxcy, wh], 1)
+
     matched_labels = gt_labels[best_gt_idx] + 1
     matched_labels[best_gt < iou_threshold] = 0  # using iou_threshold to set background
-
-    print(matched_boxes.dim())
-    print(matched_boxes.shape)
-    print(matched_labels.dim())
-    print(matched_labels.shape)
 
     # [DEBUG] Check if output is the desire shape
     assert matched_boxes.dim() == 2
@@ -224,6 +229,7 @@ def nms_bbox(bbox_loc, bbox_confid_scores, overlap_threshold=0.5, prob_threshold
     """
 
     # [DEBUG] Check if input is the desire shape
+    # [DEBUG] Check if input is the desire shape
     assert bbox_loc.dim() == 2
     assert bbox_loc.shape[1] == 4
     assert bbox_confid_scores.dim() == 2
@@ -232,12 +238,27 @@ def nms_bbox(bbox_loc, bbox_confid_scores, overlap_threshold=0.5, prob_threshold
     sel_bbox = []
 
     # Todo: implement nms for filtering out the unnecessary bounding boxes
+    #convert bboxes from center format to corner format
+    bbox_loc = center2corner(bbox_loc)
     num_classes = bbox_confid_scores.shape[1]
     for class_idx in range(0, num_classes):
         # Tip: use prob_threshold to set the prior that has higher scores and filter out the low score items for fast
         # computation
+        #filtering scores using probability threshold
+        bbx_class_scores = bbox_confid_scores[:, class_idx]
+        filtered_pos = bbx_class_scores > prob_threshold
+        mask = filtered_pos.unsqueeze_(1).expand_as(bbx_class_scores)
+        prob_fil_scores = bbx_class_scores[mask]
 
-        pass
+        pick = []
+        l = bbox_loc[:, 0]
+        t = bbox_loc[:, 1]
+        r = bbox_loc[:, 2]
+        b = bbox_loc[:, 3]
+
+        #calculating area
+        areas = (r - l) * (b - t)
+        order = prob_fil_scores.argsort()[::-1]
 
     return sel_bbox
 
@@ -268,8 +289,8 @@ def loc2bbox(loc, priors, center_var=0.1, size_var=0.2):
 
     # real bounding box
     return torch.cat([
-        center_var * l_center * p_size + p_center,      # b_{center}
-        p_size * torch.exp(size_var * l_size)           # b_{size}
+        center_var * l_center * p_size + p_center,  # b_{center}
+        p_size * torch.exp(size_var * l_size)  # b_{size}
     ], dim=-1)
 
 

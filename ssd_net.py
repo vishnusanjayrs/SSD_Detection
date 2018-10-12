@@ -1,11 +1,8 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch.nn.functional as f
 import module_util
 from mobilenet import MobileNet
-import os
-
-current_directory = os.getcwd()  # current working directory
 
 
 class SSD(nn.Module):
@@ -13,168 +10,153 @@ class SSD(nn.Module):
         super(SSD, self).__init__()
         self.num_classes = num_classes
 
-        # Setup the backbone network (base_net)
-        self.base_net = MobileNet(num_classes)
+        # Setup the backbone network (base_net).
+        self.base_net = MobileNet()
 
-        # The feature map will extracted from layer[11] and layer[13] in (base_net)
-        self.base_output_layer_indices = (11, 13)
+        # The feature map will extracted from the end of following layers sections in (base_net).
+        self.base_output_sequence_indices = (0, 6, 12, len(self.base_net.base_net))
 
-        # Define the Additional feature extractor
-        self.additional_feat_extractor = nn.ModuleList([
-            # Conv14_2
+        # Number of prior bounding box.
+        self.num_prior_bbox = 6
+
+        # Define the additional feature extractor.
+        self.additional_feature_extractor = nn.ModuleList([
+            # Layer 28 - 29 5x5x512
             nn.Sequential(
                 nn.Conv2d(in_channels=1024, out_channels=256, kernel_size=1),
                 nn.ReLU(),
                 nn.Conv2d(in_channels=256, out_channels=512, kernel_size=3, stride=2, padding=1),
                 nn.ReLU()
             ),
-            # Conv15_2
+            # Layer 30 - 31 3x3x256
             nn.Sequential(
                 nn.Conv2d(in_channels=512, out_channels=128, kernel_size=1),
                 nn.ReLU(),
                 nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, stride=2, padding=1),
                 nn.ReLU()
             ),
-            # Conv16_2
+            # Layer 32 - 33 2x2x256
             nn.Sequential(
                 nn.Conv2d(in_channels=256, out_channels=128, kernel_size=1),
                 nn.ReLU(),
                 nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, stride=2, padding=1),
                 nn.ReLU()
             ),
-            # Conv17_2
+            # Layer 34 - 35 1x1x256
             nn.Sequential(
-                nn.Conv2d(in_channels=256, out_channels=64, kernel_size=1),
+                nn.Conv2d(in_channels=256, out_channels=128, kernel_size=1),
                 nn.ReLU(),
-                nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, stride=2, padding=1),
+                nn.Conv2d(in_channels=128, out_channels=256, kernel_size=3, stride=2, padding=1),
                 nn.ReLU()
             )
         ])
 
-        # Bounding box offset regressor
-        num_prior_bbox = 6  # num of prior bounding boxes
+        # Bounding box offset regressor.
         self.loc_regressor = nn.ModuleList([
-            nn.Conv2d(in_channels=512, out_channels=num_prior_bbox * 4, kernel_size=3, padding=1),
-            nn.Conv2d(in_channels=1024, out_channels=num_prior_bbox * 4, kernel_size=3, padding=1),
-            nn.Conv2d(in_channels=512, out_channels=num_prior_bbox * 4, kernel_size=3, padding=1),
-            nn.Conv2d(in_channels=256, out_channels=num_prior_bbox * 4, kernel_size=3, padding=1),
-            nn.Conv2d(in_channels=256, out_channels=num_prior_bbox * 4, kernel_size=3, padding=1),
-            nn.Conv2d(in_channels=128, out_channels=num_prior_bbox * 4, kernel_size=3, padding=1)
-            # TODO: implement remaining layers.
+            nn.Conv2d(256, self.num_prior_bbox * 4, kernel_size=3, padding=1),               # Layer 11
+            nn.Conv2d(512, self.num_prior_bbox * 4, kernel_size=3, padding=1),               # Layer 22
+            nn.Conv2d(1024, self.num_prior_bbox * 4, kernel_size=3, padding=1),              # Layer 27
+            nn.Conv2d(512, self.num_prior_bbox * 4, kernel_size=3, padding=1),               # Layer 29
+            nn.Conv2d(256, self.num_prior_bbox * 4, kernel_size=3, padding=1),               # Layer 31
+            nn.Conv2d(256, self.num_prior_bbox * 4, kernel_size=3, padding=1),               # Layer 33
+            nn.Conv2d(256, self.num_prior_bbox * 4, kernel_size=3, padding=1),               # Layer 35
         ])
 
-        # Bounding box classification confidence for each label
+        # Bounding box classification confidence for each label.
         self.classifier = nn.ModuleList([
-            nn.Conv2d(in_channels=512, out_channels=num_prior_bbox * num_classes, kernel_size=3, padding=1),
-            nn.Conv2d(in_channels=1024, out_channels=num_prior_bbox * num_classes, kernel_size=3, padding=1),
-            nn.Conv2d(in_channels=512, out_channels=num_prior_bbox * num_classes, kernel_size=3, padding=1),
-            nn.Conv2d(in_channels=256, out_channels=num_prior_bbox * num_classes, kernel_size=3, padding=1),
-            nn.Conv2d(in_channels=256, out_channels=num_prior_bbox * num_classes, kernel_size=3, padding=1),
-            nn.Conv2d(in_channels=128, out_channels=num_prior_bbox * num_classes, kernel_size=3, padding=1)
-            # TODO: implement remaining layers.
+            nn.Conv2d(256, self.num_prior_bbox * num_classes, kernel_size=3, padding=1),     # Layer 11
+            nn.Conv2d(512, self.num_prior_bbox * num_classes, kernel_size=3, padding=1),     # Layer 13
+            nn.Conv2d(1024, self.num_prior_bbox * num_classes, kernel_size=3, padding=1),    # Layer 25
+            nn.Conv2d(512, self.num_prior_bbox * num_classes, kernel_size=3, padding=1),     # Layer 29
+            nn.Conv2d(256, self.num_prior_bbox * num_classes, kernel_size=3, padding=1),     # Layer 31
+            nn.Conv2d(256, self.num_prior_bbox * num_classes, kernel_size=3, padding=1),     # Layer 33
+            nn.Conv2d(256, self.num_prior_bbox * num_classes, kernel_size=3, padding=1),     # Layer 35
         ])
 
-        # Todo: load the pre-trained model for self.base_net, it will increase the accuracy by fine-tuning
-        net_state = self.base_net.state_dict()
-        pre_trained_model = os.path.join(current_directory, 'pretrained/mobienetv2.pth')
-        pret_state = torch.load(pre_trained_model)
-        pret_state = {k: v for k, v in pret_state.items() if k in net_state}
-        net_state.update(pret_state)
-        self.base_net.load_state_dict(net_state)
+        # Load pretrained model.
+        pretrained_state = torch.load('pretrained/mobienetv2.pth')
+        model_dict = self.base_net.state_dict()
 
-        # self.base_net.load_state_dict(pret_state)
+        # Filter out unnecessary keys.
+        pretrained_state = {k: v for k, v in pretrained_state.items() if k in model_dict}
+
+        # Overwrite entries in the existing state dict.
+        model_dict.update(pretrained_state)
+
+        # Load the new state dict.
+        self.base_net.load_state_dict(model_dict)
 
         def init_with_xavier(m):
             if isinstance(m, nn.Conv2d):
                 nn.init.xavier_uniform_(m.weight)
-
         self.loc_regressor.apply(init_with_xavier)
         self.classifier.apply(init_with_xavier)
-        self.additional_feat_extractor.apply(init_with_xavier)
+        self.additional_feature_extractor.apply(init_with_xavier)
 
-    def feature_to_bbbox(self, loc_regress_layer, confidence_layer, input_feature):
+    def feature_to_bbox(self, loc_regress_layer, confidence_layer, input_feature):
         """
-        Compute the bounding box class scores and the bounding box offset
-        :param loc_regress_layer: offset regressor layer to run forward
-        :param confidence_layer: confidence layer to run forward
-        :param input_feature: feature map to be feed in
+        Compute the bounding box class scores and the bounding box offset.
+        :param loc_regress_layer: offset regressor layer to run forward.
+        :param confidence_layer: confidence layer to run forward.
+        :param input_feature: feature map to be feed in forward.
         :return: confidence and location, with dim:(N, num_priors, num_classes) and dim:(N, num_priors, 4) respectively.
         """
         conf = confidence_layer(input_feature)
         loc = loc_regress_layer(input_feature)
 
         # Confidence post-processing:
-        # 1: (N, num_prior_bbox * n_classes, H, W) to (N, H*W*num_prior_bbox, n_classes) = (N, num_priors, num_classes)
-        #    where H*W*num_prior_bbox = num_priors
+        # 1: (N, num_prior_bbox * n_classes, H, W) to
+        # (N, H * W * num_prior_bbox, n_classes) = (N, num_priors, num_classes)
+        # where H * W * num_prior_bbox = num_priors
         conf = conf.permute(0, 2, 3, 1).contiguous()
         num_batch = conf.shape[0]
         c_channels = int(conf.shape[1] * conf.shape[2] * conf.shape[3] / self.num_classes)
         conf = conf.view(num_batch, c_channels, self.num_classes)
 
-        # Bounding Box loc and size post-processing
-        # 1: (N, num_prior_bbox*4, H, W) to (N, num_priors, 4)
+        # Bounding Box loc and size post-processing.
+        # 1: (N, num_prior_bbox * 4, H, W) to (N, num_priors, 4)
         loc = loc.permute(0, 2, 3, 1).contiguous()
         loc = loc.view(num_batch, c_channels, 4)
 
         return conf, loc
 
-    def forward(self, input):
+    def forward(self, inp):
 
         confidence_list = []
         loc_list = []
+        result = inp
 
-        # Run the backbone network from [0 to 11, and fetch the bbox class confidence
-        # as well as position and size
-        y = module_util.forward_from(self.base_net.conv_layers, 0, self.base_output_layer_indices[0] + 1, input)
-        confidence, loc = self.feature_to_bbbox(self.loc_regressor[0], self.classifier[0], y)
-        confidence_list.append(confidence)
-        loc_list.append(loc)
+        # Forward the 'result' to base net for regressor & classifier.
+        for index in range(0, len(self.base_output_sequence_indices) - 1):
+            result = module_util.forward_from(
+                self.base_net.base_net,
+                self.base_output_sequence_indices[index], self.base_output_sequence_indices[index + 1], result)
+            confidence, loc = self.feature_to_bbox(self.loc_regressor[index], self.classifier[index], result)
+            confidence_list.append(confidence)
+            loc_list.append(loc)
 
-        # Todo: implement run the backbone network from [11 to 13] and compute the corresponding bbox loc and confidence
-        # run from 11 to 13 in backbone and fetch confidence and loc_list
-        y = module_util.forward_from(self.base_net.conv_layers, self.base_output_layer_indices[0] + 1,
-                                     self.base_output_layer_indices[1] + 1, y)
-        confidence, loc = self.feature_to_bbbox(self.loc_regressor[1], self.classifier[1], y)
-        confidence_list.append(confidence)
-        loc_list.append(loc)
-
-        # Todo: forward the 'y' to additional layers for extracting coarse features
-
-        # run from mobile net output to 1 additional_feat_extractor
-        y = module_util.forward_from(self.additional_feat_extractor, 0, 1, y)
-        confidence, loc = self.feature_to_bbbox(self.loc_regressor[2], self.classifier[2], y)
-        confidence_list.append(confidence)
-        loc_list.append(loc)
-
-        # run from 1 to 2 additional_feat_extractor
-        y = module_util.forward_from(self.additional_feat_extractor, 1, 2, y)
-        confidence, loc = self.feature_to_bbbox(self.loc_regressor[3], self.classifier[3], y)
-        confidence_list.append(confidence)
-        loc_list.append(loc)
-
-        # run from 2 to 3 additional_feat_extractor
-        y = module_util.forward_from(self.additional_feat_extractor, 2, 3, y)
-        confidence, loc = self.feature_to_bbbox(self.loc_regressor[4], self.classifier[4], y)
-        confidence_list.append(confidence)
-        loc_list.append(loc)
-
-        # run from 4 to last additional_feat_extractor
-        y = module_util.forward_from(self.additional_feat_extractor, 3, 4, y)
-        confidence, loc = self.feature_to_bbbox(self.loc_regressor[5], self.classifier[5], y)
-        confidence_list.append(confidence)
-        loc_list.append(loc)
+        # Forward the 'result' to additional layers for extracting coarse features.
+        for index in range(0, len(self.additional_feature_extractor)):
+            result = module_util.forward_from(
+                self.additional_feature_extractor,
+                index, index + 1, result)
+            confidence, loc = self.feature_to_bbox(self.loc_regressor[index + 3], self.classifier[index + 3], result)
+            confidence_list.append(confidence)
+            loc_list.append(loc)
 
         confidences = torch.cat(confidence_list, 1)
         locations = torch.cat(loc_list, 1)
 
-        # [Debug] check the output
-        # assert confidence.dim() == 3  # should be (N, num_priors, num_classes)
-        # assert locations.dim() == 3  # should be (N, num_priors, 4)
-        # assert confidence.shape[1] == locations.shape[1]
-        # assert locations.shape[2] == 4
+        # [Debug] Check the output.
+        print(confidences.shape)
+        assert confidences.dim() == 3                       # Should be (N, num_priors, num_classes).
+        assert confidences.shape[2] == self.num_classes     # Should be (N, num_priors, num_classes).
+        assert locations.dim() == 3                         # Should be (N, num_priors, 4).
+        assert confidences.shape[1] == locations.shape[1]
+        assert locations.shape[2] == 4
 
         if not self.training:
-            # If in testing/evaluating mode, normalize the output with Softmax
-            confidences = F.softmax(confidences, dim=1)
+            # If in testing/evaluating mode, normalize the output with Softmax.
+            confidences = f.softmax(confidences, dim=1)
 
         return confidences, locations
