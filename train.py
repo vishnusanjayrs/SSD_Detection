@@ -23,10 +23,13 @@ current_directory = os.getcwd()  # current working directory
 training_ratio = 0.8
 
 if __name__ == '__main__':
+
     polygons_label_path = "/home/datasets/full_dataset_labels/train_extra"
     images_path = "/home/datasets/full_dataset/train_extra"
-    #polygons_label_path = os.path.join(current_directory,"cityscapes_samples_labels")
-    #images_path = os.path.join(current_directory,"cityscapes_samples")
+    # polygons_label_path = os.path.join(current_directory,"cityscapes_samples_labels")
+    # images_path = os.path.join(current_directory,"cityscapes_samples")
+
+
 
     compl_poly_path = os.path.join(polygons_label_path, "*", "*_polygons.json")
 
@@ -81,6 +84,7 @@ if __name__ == '__main__':
         img_name = images[i].split('/')[-1]
         img_iden = img_name[:-16]
         image_path = os.path.join(images_path, img_folder, img_name)
+        print(image_path)
         b_boxes = []
         labels = []
         for i in range(image_ll_len):
@@ -113,16 +117,16 @@ if __name__ == '__main__':
     valid_set_list = train_valid_datlist[int(n_train_sets): int(n_train_sets + n_valid_sets)]
 
     train_dataset = cityscape_dataset.CityScapeDataset(train_set_list)
-    train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=0)
+    train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=0)
     print('Total training items', len(train_dataset), ', Total training batches per epoch:', len(train_data_loader))
     print("batch_size : ",16)
 
     valid_dataset = cityscape_dataset.CityScapeDataset(valid_set_list)
-    valid_data_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=16, shuffle=True, num_workers=0)
+    valid_data_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=64, shuffle=True, num_workers=0)
     print('Total validation items', len(valid_dataset), ', Total validation batches per epoch:', len(valid_data_loader))
 
     # train_batch_idx, (train_input, train_label) = next(enumerate(train_data_loader))
-    net = ssd_net.SSD(num_classes=4)
+    net = ssd_net.SSD(num_classes=5)
 
     criterion = bbox_loss.MultiboxLoss(bbox_pre_var=[0.1,0.2])
 
@@ -131,7 +135,7 @@ if __name__ == '__main__':
     print("start train")
 
     itr = 0
-    max_epochs = 5
+    max_epochs = 15
     train_losses = []
     valid_losses = []
 
@@ -196,17 +200,7 @@ if __name__ == '__main__':
                 print('Valid Epoch: %d Itr: %d Loss: %f' % (epoch_idx, itr, float(avg_valid_loss)))
                 valid_losses.append((itr, avg_valid_loss))
 
-    train_losses = np.asarray(train_losses)
-    valid_losses = np.asarray(valid_losses)
-    train_losses[0] = train_losses[1]
-    valid_losses[0] = valid_losses[1]
 
     net_state = net.state_dict()  # serialize trained model
     torch.save(net_state, '/home/vramiyas/SSDnet_1.pth')  # save to disk
 
-
-    plt.plot(train_losses[2:, 0],  # Iteration
-             train_losses[2:, 1])  # Loss value
-    plt.plot(valid_losses[2:, 0],  # Iteration
-             valid_losses[2:, 1])  # Loss value
-    plt.show()

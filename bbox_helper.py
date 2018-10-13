@@ -197,7 +197,7 @@ def match_priors(prior_bboxes: torch.Tensor, gt_bboxes: torch.Tensor, gt_labels:
 
     matched_boxes = torch.cat([cxcy, wh], 1)
 
-    matched_labels = gt_labels[best_gt_idx]
+    matched_labels = gt_labels[best_gt_idx] + 1
     matched_labels[best_gt < iou_threshold] = 0  # using iou_threshold to set background
 
     #print(np.unique(np.array(matched_labels,dtype=np.float32)))

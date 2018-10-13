@@ -86,7 +86,4 @@ class MultiboxLoss(nn.Module):
         conf_loss = conf_loss.mean(dim=0)
         loc_huber_loss = loc_huber_loss.mean(dim=0)
 
-        print(conf_loss.shape)
-        print(loc_huber_loss.shape)
-
         return conf_loss, loc_huber_loss
