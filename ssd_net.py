@@ -148,7 +148,7 @@ class SSD(nn.Module):
         locations = torch.cat(loc_list, 1)
 
         # [Debug] Check the output.
-        print(confidences.shape)
+        #print(confidences.shape)
         assert confidences.dim() == 3                       # Should be (N, num_priors, num_classes).
         assert confidences.shape[2] == self.num_classes     # Should be (N, num_priors, num_classes).
         assert locations.dim() == 3                         # Should be (N, num_priors, 4).

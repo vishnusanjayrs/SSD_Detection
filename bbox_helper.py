@@ -1,6 +1,6 @@
 import torch
 import math
-
+import numpy as np
 ''' Prior Bounding Box  ------------------------------------------------------------------------------------------------
 '''
 img_h = 300
@@ -39,8 +39,8 @@ def generate_prior_bboxes(prior_layer_cfg):
     # init k+1 bbox size to avoid error
 
     for feat_level_idx in range(0, len(prior_layer_cfg)):  # iterate each layers
-        print("feat_level_idx")
-        print(feat_level_idx)
+        #print("feat_level_idx")
+        #print(feat_level_idx)
         layer_cfg = prior_layer_cfg[feat_level_idx]
         layer_feature_dim = layer_cfg['feature_dim_hw']
         layer_aspect_ratio = layer_cfg['aspect_ratio']
@@ -49,7 +49,7 @@ def generate_prior_bboxes(prior_layer_cfg):
         # Todo: compute S_{k} (reference: SSD Paper equation 4.)
         sk = bbox_dim[0] / img_h
         if feat_level_idx == len(prior_layer_cfg) - 1:
-            print("skplus1 here")
+            #print("skplus1 here")
             skplus1 = 1.04
         else:
             layer_cfgplus1 = prior_layer_cfg[feat_level_idx + 1]
@@ -82,8 +82,8 @@ def generate_prior_bboxes(prior_layer_cfg):
     priors_bboxes = torch.tensor(priors_bboxes)
     priors_bboxes = torch.clamp(priors_bboxes, 0.0, 1.0)
     num_priors = priors_bboxes.shape[0]
-    print(num_priors)
-    print(priors_bboxes.dim)
+    #print(num_priors)
+    #print(priors_bboxes.dim)
 
     # [DEBUG] check the output shape
     assert priors_bboxes.dim() == 2
@@ -162,15 +162,15 @@ def match_priors(prior_bboxes: torch.Tensor, gt_bboxes: torch.Tensor, gt_labels:
     assert prior_bboxes.dim() == 2
     assert prior_bboxes.shape[1] == 4
 
-    print("In match_priors ")
+    #print("In match_priors ")
 
     gtpr_iou = iou(gt_bboxes, center2corner(prior_bboxes))
 
     # iou_val, max_idx = gtpr_iou.max(0, keepdim=True)
     # max_idx.squeeze_(0)
     # iou_val.squeeze_(0)
-    # print(iou_val.shape)
-    # print(max_idx.shape)
+    # #print(iou_val.shape)
+    # #print(max_idx.shape)
     #
     # matched_boxes = gt_bboxes[max_idx]
 
@@ -197,8 +197,11 @@ def match_priors(prior_bboxes: torch.Tensor, gt_bboxes: torch.Tensor, gt_labels:
 
     matched_boxes = torch.cat([cxcy, wh], 1)
 
-    matched_labels = gt_labels[best_gt_idx] + 1
+    matched_labels = gt_labels[best_gt_idx]
     matched_labels[best_gt < iou_threshold] = 0  # using iou_threshold to set background
+
+    #print(np.unique(np.array(matched_labels,dtype=np.float32)))
+    #print(np.unique(np.array(gt_labels, dtype=np.float32)))
 
     # [DEBUG] Check if output is the desire shape
     assert matched_boxes.dim() == 2

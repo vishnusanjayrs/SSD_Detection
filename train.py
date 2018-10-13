@@ -25,6 +25,8 @@ training_ratio = 0.8
 if __name__ == '__main__':
     polygons_label_path = "/home/datasets/full_dataset_labels/train_extra"
     images_path = "/home/datasets/full_dataset/train_extra"
+    #polygons_label_path = os.path.join(current_directory,"cityscapes_samples_labels")
+    #images_path = os.path.join(current_directory,"cityscapes_samples")
 
     compl_poly_path = os.path.join(polygons_label_path, "*", "*_polygons.json")
 
@@ -48,6 +50,8 @@ if __name__ == '__main__':
                 left_top = np.min(polygon, axis=0)
                 right_bottom = np.max(polygon, axis=0)
                 ltrb = np.concatenate((left_top, right_bottom))
+                if ltrb.shape[0] != 4:
+                    print(file_path)
                 image_label_list.append(
                     {'image_name': image_name, 'file_path': file_path, 'label': label, 'bbox': ltrb})
 
@@ -77,7 +81,6 @@ if __name__ == '__main__':
         img_name = images[i].split('/')[-1]
         img_iden = img_name[:-16]
         image_path = os.path.join(images_path, img_folder, img_name)
-        print(image_path)
         b_boxes = []
         labels = []
         for i in range(image_ll_len):
@@ -93,6 +96,9 @@ if __name__ == '__main__':
                 else:
                     label = 0
                 labels.append(label)
+        if len(b_boxes) == 0:
+            print('blank', image_name)
+            continue
         train_valid_datlist.append({'image_path': image_path, 'labels': labels, 'bboxes': b_boxes})
 
     random.shuffle(train_valid_datlist)
@@ -107,24 +113,25 @@ if __name__ == '__main__':
     valid_set_list = train_valid_datlist[int(n_train_sets): int(n_train_sets + n_valid_sets)]
 
     train_dataset = cityscape_dataset.CityScapeDataset(train_set_list)
-    train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=6)
+    train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=16, shuffle=True, num_workers=0)
     print('Total training items', len(train_dataset), ', Total training batches per epoch:', len(train_data_loader))
+    print("batch_size : ",16)
 
     valid_dataset = cityscape_dataset.CityScapeDataset(valid_set_list)
-    valid_data_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=16, shuffle=True, num_workers=6)
-    print('Total training items', len(valid_dataset), ', Total training batches per epoch:', len(valid_data_loader))
+    valid_data_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=16, shuffle=True, num_workers=0)
+    print('Total validation items', len(valid_dataset), ', Total validation batches per epoch:', len(valid_data_loader))
 
     # train_batch_idx, (train_input, train_label) = next(enumerate(train_data_loader))
     net = ssd_net.SSD(num_classes=4)
 
-    criterion = bbox_loss.MultiboxLoss(bbox_pre_var=[0.1, 0.2])
+    criterion = bbox_loss.MultiboxLoss(bbox_pre_var=[0.1,0.2])
 
     optimizer = torch.optim.SGD(net.parameters(), lr=0.01, momentum=0.9, weight_decay=1e-4)
 
     print("start train")
 
     itr = 0
-    max_epochs = 3
+    max_epochs = 5
     train_losses = []
     valid_losses = []
 
@@ -132,6 +139,7 @@ if __name__ == '__main__':
         for train_batch_idx, (images, loc_targets, conf_targets) in enumerate(train_data_loader):
             itr += 1
             net.train()
+            loss = 0
 
             # Zero the parameter gradients
             optimizer.zero_grad()
@@ -144,9 +152,11 @@ if __name__ == '__main__':
 
             # Compute loss
             # forward(self, confidence, pred_loc, gt_class_labels, gt_bbox_loc):
-            loss = criterion(conf_preds, loc_preds, conf_targets, loc_targets)
+            c_loss,l_loss = criterion(conf_preds, loc_preds, conf_targets, loc_targets)
 
             # Do the backward and compute gradients
+            loss = c_loss + l_loss
+
             loss.backward()
 
             # Update the parameters with SGD
@@ -171,8 +181,10 @@ if __name__ == '__main__':
 
                     # Compute loss
                     valid_locs = Variable(valid_locs.cuda())
-                    valid_labels = Variable(valid_labels.cuda())
-                    valid_loss = criterion(v_pred_conf, v_pred_locs, valid_labels, valid_locs)
+                    valid_labels = Variable(valid_labels.cuda()).long()
+                    valid_c_loss,valid_l_loss = criterion(v_pred_conf, v_pred_locs, valid_labels, valid_locs)
+                    valid_loss = valid_c_loss + valid_l_loss
+                    valid_loss = valid_loss.sum(dim=0)
                     valid_loss_set.append(valid_loss.item())
 
                     valid_itr += 1
@@ -191,11 +203,6 @@ if __name__ == '__main__':
 
     net_state = net.state_dict()  # serialize trained model
     torch.save(net_state, '/home/vramiyas/SSDnet_1.pth')  # save to disk
-
-
-
-    print(valid_losses)
-
 
 
     plt.plot(train_losses[2:, 0],  # Iteration

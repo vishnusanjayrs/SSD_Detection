@@ -77,7 +77,7 @@ class CityScapeDataset(Dataset):
         self.labels = torch.Tensor(self.labels)
         self.bboxes = item['bboxes']
         self.bboxes = torch.Tensor(np.asarray(item['bboxes'], dtype=np.float32))
-        print(self.bboxes.shape)
+        #print(self.bboxes.shape)
 
         img = Image.open(self.image_path)
 

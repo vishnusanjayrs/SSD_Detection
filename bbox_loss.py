@@ -47,11 +47,11 @@ class MultiboxLoss(nn.Module):
         :return:
         """
         # Do the hard negative mining and produce balanced positive and negative examples
-        print("in multibox forward")
-        print(confidence.shape)
-        print(pred_loc.shape)
-        print(gt_class_labels.shape)
-        print(gt_bbox_loc.shape)
+        #print("in multibox forward")
+        #print(confidence.shape)
+        #print(pred_loc.shape)
+        #print(gt_class_labels.shape)
+        #print(gt_bbox_loc.shape)
         with torch.no_grad():
             neg_class_prob = -F.log_softmax(confidence, dim=2)[:, :, self.neg_label_idx]      # select neg. class prob.
             pos_flag, neg_flag = hard_negative_mining(neg_class_prob, gt_class_labels, neg_pos_ratio=self.neg_pos_ratio)
@@ -62,21 +62,31 @@ class MultiboxLoss(nn.Module):
         num_classes = confidence.shape[2]
         sel_conf = confidence[sel_flag]
         conf_loss = F.cross_entropy(sel_conf.reshape(-1, num_classes), gt_class_labels[sel_flag]) / num_pos
-        print(conf_loss.shape)
 
 
 
         # Loss for the bounding box prediction
         # TODO: implementation on bounding box regression
         batch_size , num_priors , locs = pred_loc.size()
-        pos = confidence > 0 #box matchedl
-        number_bbox_matched = pos.data.sum().float()
+        #print("in regression loss")
+        pos = gt_class_labels > 0 #box matched
+        #print(gt_class_labels.shape)
+        #print(pred_loc.shape)
+        number_bbox_matched = pos.sum(dim=1, keepdim=True).float()
+        #print(number_bbox_matched.shape)
         pos_mask = pos.unsqueeze(2).expand_as(pred_loc)
-        pos_pred_locs = pred_loc[pos_mask].view(-1, 4)
-        pos_loc_targets = gt_bbox_loc[pos_mask].view(-1, 4)
+        #print(pos_mask.shape)
+        pos_pred_locs = pred_loc[pos_mask].view(-1,4)
+        pos_loc_targets = gt_bbox_loc[pos_mask].view(-1,4)
 
         loc_huber_loss = F.smooth_l1_loss(pos_pred_locs, pos_loc_targets, size_average=False) / number_bbox_matched
+        #print("loc_huber_loss")
+        #print(loc_huber_loss.shape)
 
+        conf_loss = conf_loss.mean(dim=0)
+        loc_huber_loss = loc_huber_loss.mean(dim=0)
+
+        print(conf_loss.shape)
         print(loc_huber_loss.shape)
 
         return conf_loss, loc_huber_loss
