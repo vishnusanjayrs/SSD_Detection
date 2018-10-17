@@ -77,15 +77,17 @@ if __name__ == '__main__':
         for i in range(image_ll_len):
             if image_label_list[i]["image_name"] == img_iden:
                 bbox = image_label_list[i]['bbox']
-                b_boxes.append(bbox)
                 if image_label_list[i]['label'] in ('car', 'cargroup'):
                     label = 1
+                    b_boxes.append(bbox)
                 elif image_label_list[i]['label'] in ('person', 'persongroup'):
                     label = 2
+                    b_boxes.append(bbox)
                 elif image_label_list[i]['label'] == 'traffic sign':
                     label = 3
+                    b_boxes.append(bbox)
                 else:
-                    label = 0
+                    continue
                 labels.append(label)
         train_valid_datlist.append({'image_path': image_path, 'labels': labels, 'bboxes': b_boxes})
 

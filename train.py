@@ -26,10 +26,10 @@ training_ratio = 0.8
 
 if __name__ == '__main__':
 
-    polygons_label_path = "/home/datasets/full_dataset_labels/train_extra"
-    images_path = "/home/datasets/full_dataset/train_extra"
-    # polygons_label_path = os.path.join(current_directory, "cityscapes_samples_labels")
-    # images_path = os.path.join(current_directory, "cityscapes_samples")
+    # polygons_label_path = "/home/datasets/full_dataset_labels/train_extra"
+    # images_path = "/home/datasets/full_dataset/train_extra"
+    polygons_label_path = os.path.join(current_directory, "cityscapes_samples_labels")
+    images_path = os.path.join(current_directory, "cityscapes_samples")
 
     torch.multiprocessing.set_start_method("spawn")
 
@@ -94,24 +94,23 @@ if __name__ == '__main__':
         labels = []
         for i in range(image_ll_len):
             if image_label_list[i]["image_name"] == img_iden:
-                bbox = image_label_list[i]['bbox']
-                b_boxes.append(bbox)
                 if image_label_list[i]['label'] == 'car':
                     label = 1
+                    bbox = image_label_list[i]['bbox']
+                    b_boxes.append(bbox)
                 elif image_label_list[i]['label'] == 'person':
                     label = 2
-                elif image_label_list[i]['label'] == 'traffic sign':
-                    label = 3
+                    bbox = image_label_list[i]['bbox']
+                    b_boxes.append(bbox)
                 else:
-                    label = 0
+                    continue
                 labels.append(label)
         if len(b_boxes) == 0:
             print('blank', image_name)
             continue
         train_valid_datlist.append({'image_path': image_path, 'labels': labels, 'bboxes': b_boxes})
+
     '''
-
-
     outfile = os.path.join(current_directory, 'saved_list1')
 
     # with open(outfile, 'wb') as fp:
@@ -135,12 +134,12 @@ if __name__ == '__main__':
     valid_set_list = train_valid_datlist[int(n_train_sets): int(n_train_sets + n_valid_sets)]
 
     train_dataset = cityscape_dataset.CityScapeDataset(train_set_list)
-    train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
+    train_data_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size,shuffle=True, num_workers=0)
     print('Total training items', len(train_dataset), ', Total training batches per epoch:', len(train_data_loader))
     print("batch_size : ", batch_size)
 
     valid_dataset = cityscape_dataset.CityScapeDataset(valid_set_list)
-    valid_data_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
+    valid_data_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=32,shuffle=True, num_workers=0)
     print('Total validation items', len(valid_dataset), ', Total validation batches per epoch:', len(valid_data_loader))
 
     # train_batch_idx, (train_input, train_label) = next(enumerate(train_data_loader))
@@ -150,12 +149,12 @@ if __name__ == '__main__':
 
     criterion = bbox_loss.MultiboxLoss(bbox_pre_var=[0.1, 0.2])
 
-    optimizer = torch.optim.SGD(net.parameters(), lr=0.001, momentum=0.9, weight_decay=1e-4)
+    optimizer = torch.optim.SGD(net.parameters(), lr=0.001, momentum=0.9)
 
     print("start train")
 
     itr = 0
-    max_epochs = 15
+    max_epochs = 50
     train_losses = []
     valid_losses = []
 
@@ -167,7 +166,6 @@ if __name__ == '__main__':
         for train_batch_idx, (images, loc_targets, conf_targets) in enumerate(train_data_loader):
             itr += 1
             net.train()
-            loss = 0
 
             # Zero the parameter gradients
             optimizer.zero_grad()

@@ -53,6 +53,21 @@ class MultiboxLoss(nn.Module):
         # print(gt_class_labels.shape)
         # print(gt_bbox_loc.shape)
         batch_size, num_priors, locs = pred_loc.size()
+        # print('conf_shape', confidence.shape)
+        num_classes = confidence.shape[2]
+        l_pos = gt_class_labels > 0
+        l_posn = l_pos.sum(dim=1, keepdim=True).long().float()
+        mask = []  # avoid divide by 0
+        cnt = 0
+        for i in range(batch_size):
+            if l_posn[i, :] != 0:
+                mask.append(i)
+                cnt += 1
+        confidence = confidence[mask, :]
+        gt_class_labels = gt_class_labels[mask, :]
+        pred_loc = pred_loc[mask, :]
+        gt_bbox_loc = gt_bbox_loc[mask, :]
+
         with torch.no_grad():
             neg_class_prob = -F.log_softmax(confidence, dim=2)[:, :, self.neg_label_idx]  # select neg. class prob.
             pos_flag, neg_flag = hard_negative_mining(neg_class_prob, gt_class_labels, neg_pos_ratio=self.neg_pos_ratio)
@@ -60,55 +75,73 @@ class MultiboxLoss(nn.Module):
             num_pos = pos_flag.sum(dim=1, keepdim=True).long().float()
 
         # Loss for the classification
-        num_classes = confidence.shape[2]
-        mask = []  # avoid divide by 0
-        cnt = 0
-        for i in range(batch_size):
-            if num_pos[i, :] != 0:
-                mask.append(i)
-                cnt += 1
-        if cnt == 0:
-            return Variable(torch.Tensor([0])), Variable(torch.Tensor([0]))
-        num_pos = num_pos[mask, :]
-        sel_flag = sel_flag[mask, :]
-        confidence = confidence[mask, :]
-        gt_class_labels = gt_class_labels[mask, :]
-        sel_conf = confidence[sel_flag]
-        err = gt_class_labels[sel_flag] > num_classes
-        sum_err = err.sum(dim=0)
-        if sum_err > 0:
-            print('sum_err',sum_err)
-            print(gt_class_labels[sel_flag])
-        err1 = gt_class_labels[sel_flag] < 0
-        sum_err1 = err1.sum(dim=0)
-        if sum_err1 > 0:
-            print('sum_err1',sum_err1)
-            print(gt_class_labels[sel_flag])
-
-        conf_loss = F.cross_entropy(sel_conf.reshape(-1, num_classes), gt_class_labels[sel_flag])
+        # pos = gt_class_labels > 0  # box matched
+        # # print(gt_class_labels.shape)
+        # # print(pred_loc.shape)
+        # pos_mask = pos.unsqueeze(2).expand_as(confidence)
+        print(torch.max(confidence))
+        #
+        # num_classes = confidence.shape[2]
+        #
+        # mask = []  # avoid divide by 0
+        # cnt = 0
+        # for i in range(batch_size):
+        #     if num_pos[i, :] != 0:
+        #         mask.append(i)
+        #         cnt += 1
+        # if cnt == 0:
+        #     return Variable(torch.Tensor([0])), Variable(torch.Tensor([0]))
+        # num_pos = num_pos[mask, :]
+        # sel_flag = sel_flag[mask, :]
+        # confidence = confidence[mask, :]
+        # print(confidence.shape)
+        # gt_class_labels = gt_class_labels[mask, :]
+        # sel_conf = confidence[sel_flag]
+        # err = gt_class_labels[sel_flag] > num_classes
+        # sum_err = err.sum(dim=0)
+        # if sum_err > 0:
+        #     print('sum_err',sum_err)
+        #     print(gt_class_labels[sel_flag])
+        # err1 = gt_class_labels[sel_flag] < 0
+        # sum_err1 = err1.sum(dim=0)
+        # if sum_err1 > 0:
+        #     print('sum_err1',sum_err1)
+        #     print(gt_class_labels[sel_flag])
+        # print(gt_class_labels[sel_flag].shape)
+        # print(F.softmax(sel_conf))
+        #
+        # conf_loss = F.cross_entropy(sel_conf.reshape(-1, num_classes), gt_class_labels[sel_flag])
         # print('conf_loss',conf_loss)
+
+        # Loss for the classification
+        sel_conf = confidence[sel_flag]
+        conf_loss = F.cross_entropy(sel_conf.reshape(-1, num_classes), gt_class_labels[sel_flag]) / num_pos
 
         # Loss for the bounding box prediction
         # TODO: implementation on bounding box regression
 
         pos = gt_class_labels > 0  # box matched
+        # print(pos.sum(dim=1, keepdim=True).long().float())
         # print(gt_class_labels.shape)
         # print(pred_loc.shape)
-        pred_loc = pred_loc[mask, :]
-        gt_bbox_loc = gt_bbox_loc[mask, :]
+        # pred_loc = pred_loc[mask, :]
+        # gt_bbox_loc = gt_bbox_loc[mask, :]
         pos_mask = pos.unsqueeze(2).expand_as(pred_loc)
         # print(pos_mask.shape)
         pos_pred_locs = pred_loc[pos_mask].view(-1, 4)
         pos_loc_targets = gt_bbox_loc[pos_mask].view(-1, 4)
 
-        loc_huber_loss = F.smooth_l1_loss(pos_pred_locs, pos_loc_targets, size_average=False)
+        loc_huber_loss = F.smooth_l1_loss(pos_pred_locs, pos_loc_targets)
         # print("loc_huber_loss")
         # print(loc_huber_loss.shape)
         # print('loc_huber_loss',loc_huber_loss)
         num_pos = num_pos.sum(dim=0).long().float()
         conf_loss = conf_loss.sum(dim=0)
         loc_huber_loss = loc_huber_loss.sum(dim=0)
+        print('conf_loss:', conf_loss)
+        print('loc_huber_loss', loc_huber_loss)
         conf_loss = conf_loss/num_pos
         loc_huber_loss = loc_huber_loss/num_pos
+
 
         return conf_loss, loc_huber_loss

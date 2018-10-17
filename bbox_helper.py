@@ -174,20 +174,25 @@ def match_priors(prior_bboxes: torch.Tensor, gt_bboxes: torch.Tensor, gt_labels:
     #
     # matched_boxes = gt_bboxes[max_idx]
 
-    best_prior, best_prior_idx = gtpr_iou.max(1, keepdim=True)
+    # best_prior, best_prior_idx = gtpr_iou.max(1, keepdim=True)
+    #
+    # best_gt, best_gt_idx = gtpr_iou.max(0, keepdim=True)
+    #
+    # best_gt_idx.squeeze_(0)
+    # best_gt.squeeze_(0)
+    # best_prior_idx.squeeze_(1)
+    # best_prior.squeeze_(1)
+    # best_gt_idx.index_fill_(0, best_prior_idx, 2)  # ensure best prior
+    #
+    # # ensure every gt matches with its prior of max overlap
+    # for j in range(best_prior_idx.size(0)):
+    #     best_gt_idx[best_prior_idx[j]] = j
+    # matched_boxes = gt_bboxes[best_gt_idx]
 
-    best_gt, best_gt_idx = gtpr_iou.max(0, keepdim=True)
-
-    best_gt_idx.squeeze_(0)
-    best_gt.squeeze_(0)
-    best_prior_idx.squeeze_(1)
-    best_prior.squeeze_(1)
-    best_gt_idx.index_fill_(0, best_prior_idx, 2)  # ensure best prior
-
-    # ensure every gt matches with its prior of max overlap
-    for j in range(best_prior_idx.size(0)):
-        best_gt_idx[best_prior_idx[j]] = j
-    matched_boxes = gt_bboxes[best_gt_idx]
+    iou_val, max_idx = gtpr_iou.max(0)
+    max_idx.squeeze_(0)
+    iou_val.squeeze_(0)
+    matched_boxes = gt_bboxes[max_idx]
 
     variances = [0.1, 0.2]
     cxcy = (matched_boxes[:, :2] + matched_boxes[:, 2:]) / 2 - prior_bboxes[:, :2]  # [8732,2]
@@ -195,13 +200,11 @@ def match_priors(prior_bboxes: torch.Tensor, gt_bboxes: torch.Tensor, gt_labels:
     wh = (matched_boxes[:, 2:] - matched_boxes[:, :2]) / prior_bboxes[:, 2:]  # [8732,2]
     wh = torch.log(wh) / variances[1]
 
-    matched_boxes = torch.cat([cxcy, wh], 1)
+    loc = torch.cat([cxcy, wh], 1)
 
-    matched_labels = gt_labels[best_gt_idx]
-    matched_labels[best_gt < iou_threshold] = 0  # using iou_threshold to set background
+    matched_labels = gt_labels[max_idx]
+    matched_labels[iou_val < iou_threshold] = 0  # using iou_threshold to set background
 
-    err = matched_labels > 3
-    matched_labels[err] = 0
     # print("matched ground truth")
     # print(np.unique(np.array(matched_labels,dtype=np.float32)))
     # print(np.unique(np.array(gt_labels, dtype=np.float32)))
@@ -212,7 +215,7 @@ def match_priors(prior_bboxes: torch.Tensor, gt_bboxes: torch.Tensor, gt_labels:
     assert matched_labels.dim() == 1
     assert matched_labels.shape[0] == matched_boxes.shape[0]
 
-    return matched_boxes, matched_labels
+    return loc, matched_labels
 
 
 ''' NMS ----------------------------------------------------------------------------------------------------------------

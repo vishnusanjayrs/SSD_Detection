@@ -74,6 +74,8 @@ class SSD(nn.Module):
         # Overwrite entries in the existing state dict.
         model_dict.update(pretrained_state)
 
+
+
         # Load the new state dict.
         self.base_net.load_state_dict(model_dict)
 
@@ -83,6 +85,7 @@ class SSD(nn.Module):
         self.loc_regressor.apply(init_with_xavier)
         self.classifier.apply(init_with_xavier)
         self.additional_feature_extractor.apply(init_with_xavier)
+
 
     def feature_to_bbox(self, loc_regress_layer, confidence_layer, input_feature):
         """

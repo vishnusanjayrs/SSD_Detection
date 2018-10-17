@@ -86,16 +86,14 @@ class CityScapeDataset(Dataset):
         # normalize_img
         img = np.asarray(img, dtype=np.float32)
         # normalise the image pixels to (-1,1)
-        img = (img / 255.0) * 2 - 1
+        img = np.subtract(img, self.mean)
+        img = np.divide(img, self.std)
 
         # convert to tensor
         img_tensor = torch.Tensor(img.astype(float))
         img_tensor = img_tensor.view((img.shape[2], img.shape[0], img.shape[1]))
         img_tensor = img_tensor.cuda()
 
-        labels_0 = labels == 0
-
-        bboxes[labels_0] = torch.Tensor([0.0, 0.0, 0.0, 0.0])
 
         '''
         l_min = 5000
