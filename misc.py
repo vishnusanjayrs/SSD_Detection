@@ -12,22 +12,25 @@ torch.set_default_tensor_type('torch.cuda.FloatTensor')
 #
 current_directory = os.getcwd()  # current working directory
 #
-model = ssd_net.SSD(num_classes=5)
-func = module_util.summary_layers(model, (3, 300, 300))
+# model = ssd_net.SSD(num_classes=4)
+# func = module_util.summary_layers(model, (3, 300, 300))
 
-# net = mobilenet.MobileNet()
-# net_state = net.state_dict()SSD
-#
-#
-# pre_trained_model = os.path.join(current_directory, 'pretrained/mobienetv2.pth')
-#
-# pret_state = torch.load(pre_trained_model)
-# print(pret_state.keys())
-# pret_state = {k: v for k, v in pret_state.items() if k in net.state_dict()}
-#
-# net_state.update(pret_state)
-# net.load_state_dict(net_state)
-#
+net = mobilenet.MobileNet()
+net_state = net.state_dict()
+
+
+pre_trained_model = os.path.join(current_directory, 'pretrained/mobienetv2.pth')
+
+pret_state = torch.load(pre_trained_model)
+print(pret_state.keys())
+pret_state = {k: v for k, v in pret_state.items() if k in net.state_dict()}
+
+net_state.update(pret_state)
+net.load_state_dict(net_state)
+
+print(net_state.values())
+
+
 # print(type(pret_state))
 # print(pret_state.keys())
 # print(net.state_dict().keys())

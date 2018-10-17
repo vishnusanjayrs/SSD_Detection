@@ -88,7 +88,7 @@ def generate_prior_bboxes(prior_layer_cfg):
     # [DEBUG] check the output shape
     assert priors_bboxes.dim() == 2
     assert priors_bboxes.shape[1] == 4
-    return priors_bboxes
+    return priors_bboxes.cuda()
 
 
 def intersect(a_box, b_box):
@@ -197,11 +197,14 @@ def match_priors(prior_bboxes: torch.Tensor, gt_bboxes: torch.Tensor, gt_labels:
 
     matched_boxes = torch.cat([cxcy, wh], 1)
 
-    matched_labels = gt_labels[best_gt_idx] + 1
+    matched_labels = gt_labels[best_gt_idx]
     matched_labels[best_gt < iou_threshold] = 0  # using iou_threshold to set background
 
-    #print(np.unique(np.array(matched_labels,dtype=np.float32)))
-    #print(np.unique(np.array(gt_labels, dtype=np.float32)))
+    err = matched_labels > 3
+    matched_labels[err] = 0
+    # print("matched ground truth")
+    # print(np.unique(np.array(matched_labels,dtype=np.float32)))
+    # print(np.unique(np.array(gt_labels, dtype=np.float32)))
 
     # [DEBUG] Check if output is the desire shape
     assert matched_boxes.dim() == 2
