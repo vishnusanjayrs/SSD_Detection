@@ -125,7 +125,7 @@ if __name__ == '__main__':
     train_valid_datlist = train_valid_datlist
 
     random.shuffle(train_valid_datlist)
-    total_training_validation_items = len(train_valid_datlist) * 0.05
+    total_training_validation_items = len(train_valid_datlist)
     batch_size = 64
 
     # Training dataset.
@@ -133,11 +133,11 @@ if __name__ == '__main__':
     train_set_list = train_valid_datlist[: int(n_train_sets)]
 
     # Validation dataset.
-    n_valid_sets = n_train_sets * validation_ratio
-    valid_set_list = train_valid_datlist[: int(n_train_sets)]
+    n_valid_sets = (total_training_validation_items - n_train_sets ) * validation_ratio
+    valid_set_list = train_valid_datlist[int(n_train_sets):int(n_train_sets+n_valid_sets)]
 
     # Test dataset.
-    n_test_sets = n_train_sets * validation_ratio
+    n_test_sets = (total_training_validation_items - n_train_sets ) * validation_ratio
     test_set_list = train_valid_datlist[
                     int(n_train_sets + n_valid_sets): int(n_train_sets + n_valid_sets + n_test_sets)]
 
