@@ -3,6 +3,7 @@ import torch.nn
 from torch.utils.data import Dataset
 from bbox_helper import generate_prior_bboxes, match_priors
 from PIL import Image
+from random import randint
 import matplotlib.pyplot as plt
 
 
@@ -30,21 +31,24 @@ class CityScapeDataset(Dataset):
             :param prior_layer_cfg: configuration for each feature layer, see the 'example_prior_layer_cfg' in the following.
             :return prior bounding boxes with form of (cx, cy, w, h), where the value range are from 0 to 1, dim (1, num_priors, 4)
             """
-        prior_layer_cfg = [{'layer_name': 'Conv6', 'feature_dim_hw': (38, 38), 'bbox_size': (30, 30),
-                            'aspect_ratio': (1.0, 1 / 2, 1 / 3, 2.0, 3.0)},
-                           {'layer_name': 'Conv11', 'feature_dim_hw': (19, 19), 'bbox_size': (60, 60),
-                            'aspect_ratio': (1.0, 1 / 2, 1 / 3, 2.0, 3.0)},
-                           {'layer_name': 'Conv13', 'feature_dim_hw': (10, 10), 'bbox_size': (111, 111),
-                            'aspect_ratio': (1.0, 1 / 2, 1 / 3, 2.0, 3.0)},
-                           {'layer_name': 'Conv14_2', 'feature_dim_hw': (5, 5), 'bbox_size': (162, 162),
-                            'aspect_ratio': (1.0, 1 / 2, 1 / 3, 2.0, 3.0)},
-                           {'layer_name': 'Conv15_2', 'feature_dim_hw': (3, 3), 'bbox_size': (213, 213),
-                            'aspect_ratio': (1.0, 1 / 2, 1 / 3, 2.0, 3.0)},
-                           {'layer_name': 'Conv16_2', 'feature_dim_hw': (1, 1), 'bbox_size': (264, 264),
-                            'aspect_ratio': (1.0, 1 / 2, 1 / 3, 2.0, 3.0)}
+        prior_layer_cfg = [{'layer_name': 'Conv4', 'feature_dim_hw': (75, 75), 'bbox_size': (7.5, 7.5),
+                            'aspect_ratio': (1.0, 1 / 2, 1 / 3, 1 / 4, 2.0, 3.0, 4.0)},
+                           {'layer_name': 'Conv6', 'feature_dim_hw': (38, 38), 'bbox_size': (40.71, 40.71),
+                            'aspect_ratio': (1.0, 1 / 2, 1 / 3, 1 / 4, 2.0, 3.0, 4.0)},
+                           {'layer_name': 'Conv11', 'feature_dim_hw': (19, 19), 'bbox_size': (73.93, 73.93),
+                            'aspect_ratio': (1.0, 1 / 2, 1 / 3, 1 / 4, 2.0, 3.0, 4.0)},
+                           {'layer_name': 'Conv13', 'feature_dim_hw': (10, 10), 'bbox_size': (107.14, 107.14),
+                            'aspect_ratio': (1.0, 1 / 2, 1 / 3, 1 / 4, 2.0, 3.0, 4.0)},
+                           {'layer_name': 'Conv14_2', 'feature_dim_hw': (5, 5), 'bbox_size': (140.36, 140.36),
+                            'aspect_ratio': (1.0, 1 / 2, 1 / 3, 1 / 4, 2.0, 3.0, 4.0)},
+                           {'layer_name': 'Conv15_2', 'feature_dim_hw': (3, 3), 'bbox_size': (173.57, 173.57),
+                            'aspect_ratio': (1.0, 1 / 2, 1 / 3, 1 / 4, 2.0, 3.0, 4.0)},
+                           {'layer_name': 'Conv16_2', 'feature_dim_hw': (2, 2), 'bbox_size': (206.79, 206.79),
+                            'aspect_ratio': (1.0, 1 / 2, 1 / 3, 1 / 4, 2.0, 3.0, 4.0)},
+                           {'layer_name': 'Conv16_2', 'feature_dim_hw': (1, 1), 'bbox_size': (240, 240),
+                            'aspect_ratio': (1.0, 1 / 2, 1 / 3, 1 / 4, 2.0, 3.0, 4.0)}
                            ]
         self.prior_bboxes = generate_prior_bboxes(prior_layer_cfg)
-
         # Pre-process parameters:
         #  Normalize: (I-self.mean)/self.std
         self.mean = np.asarray((127, 127, 127))
@@ -74,15 +78,26 @@ class CityScapeDataset(Dataset):
         labels = np.asarray(item['labels'])
         labels = torch.Tensor(labels).cuda()
         bboxes = torch.Tensor(item['bboxes']).cuda()
+        bbox = np.array(item['bboxes'])
         # print(self.bboxes.shape)
 
         img = Image.open(image_path)
+        #
+        # plt.imshow(img)
+        # plt.show()
+
+        # img = self.crop(img, bbox, labels)
+
+        # print('img_size',img.size)
 
         w, h = img.size
         bboxes /= torch.Tensor([w, h, w, h]).expand_as(bboxes)
 
         # resize image
         img = img.resize((self.image_size, self.image_size), Image.ANTIALIAS)
+
+        # plt.imshow(img)
+        # plt.show()
         # normalize_img
         img = np.asarray(img, dtype=np.float32)
         # normalise the image pixels to (-1,1)
@@ -93,60 +108,6 @@ class CityScapeDataset(Dataset):
         img_tensor = torch.Tensor(img.astype(float))
         img_tensor = img_tensor.view((img.shape[2], img.shape[0], img.shape[1]))
         img_tensor = img_tensor.cuda()
-
-
-        '''
-        l_min = 5000
-        t_min = 5000
-        r_max = 0
-        b_max = 0
-
-        for i in range(0, len(self.labels)):
-            print(self.labels[i])
-            print(self.bboxes[i])
-            if self.labels[i] != 0:
-                if self.bboxes[i][0, 0] < l_min:
-                    l_min = self.bboxes[i][0, 0]
-                if self.bboxes[i][0, 1] < t_min:
-                    t_min = self.bboxes[i][0, 1]
-                if self.bboxes[i][0, 2] > r_max:
-                    r_max = self.bboxes[i][0, 2]
-                if self.bboxes[i][0, 3] > b_max:
-                    b_max = self.bboxes[i][0, 3]
-        print(l_min, t_min, r_max, b_max)
-
-        if r_max - l_min < 1024:
-            buff = 1024 - (r_max - l_min)
-            rand = np.random.dirichlet(np.ones(2), size=1)
-            print(rand.shape)
-            inc1 = buff * rand[0, 0]
-            inc2 = buff * rand[0, 1]
-            crops = [l_min - inc1, 0, r_max + inc2, 1024]
-            image = Image.open(self.image_path)
-            img = image.crop((crops))
-            plt.imshow(img)
-            plt.show()
-
-            crop_label = []
-            crop_bbox = []
-            for i in range(0, len(self.labels)):
-                if self.labels[i] == 0:
-                    if (self.bboxes[i][0, 0] < (l_min - inc1) and self.bboxes[i][0, 2] < (l_min - inc1)) or \
-                            ( self.bboxes[i][0, 0] > (r_max + inc2)):
-                        continue
-                    elif self.bboxes[i][0, 0] < (l_min - inc1) and self.bboxes[i][0, 2] < (r_max + inc2):
-                        self.bboxes[i][0,0] = l_min - inc1
-                    elif self.bboxes[i][0, 0] > (l_min - inc1) and self.bboxes[i][0, 2] > (r_max + inc2):
-                        self.bboxes[i][0, 2] = r_max + inc2
-                    elif self.bboxes[i][0, 0] < (l_min - inc1) and self.bboxes[i][0, 2] > (r_max + inc2):
-                        self.bboxes[i][0, 0] = l_min - inc1
-                        self.bboxes[i][0, 2] = r_max + inc2
-                    crop_bbox.append(self.bboxes[i])
-                    crop_label.append(self.labels[i])
-                else:
-                    crop_bbox.append(self.bboxes[i])
-                    crop_label.append(self.labels[i])
-        '''
 
         # 4. Do the augmentation if needed. e.g. random clip the bounding box or flip the bounding box
 
@@ -162,4 +123,41 @@ class CityScapeDataset(Dataset):
         # assert bbox_label_tensor.dim() == 1
         # assert bbox_label_tensor.shape[0] == bbox_tensor.shape[0]
 
+
+
+
         return img_tensor, bbox_tensor, bbox_label_tensor
+
+    def crop(self,image, bbox, label):
+        w, h = image.size
+        print(bbox)
+        print('image_size insde crop :',w,h)
+        xmin = min(bbox[:, 0])
+        xmax = max(bbox[:, 2])
+        ymin = min(bbox[:, 1])
+        ymax = max(bbox[:, 3])
+        print('xmin', xmin)
+        print('xmax', xmax)
+        if xmax - xmin < h:
+            print("image within range")
+            max_dim = max((xmax - xmin),(ymax-ymin))
+            size = randint(max_dim,h)
+            print(size)
+            add_x = size - (xmax - xmin)
+            add_y = size - (ymax - ymin)
+            rand = np.random.dirichlet(np.ones(2), size=1)
+            dec_l = round(add_x * rand[0, 0])
+            inc_r = round(add_x * rand[0, 1])
+            dec_t = round(add_y * rand[0, 0])
+            inc_b = round(add_y * rand[0, 1])
+            if xmin - dec_l < 0:
+                l=0
+                r=size
+
+
+            crops = np.array([l, t, r, b])
+            print(crops)
+            crop_img = image.crop(crops)
+            return crop_img
+        else:
+            return image

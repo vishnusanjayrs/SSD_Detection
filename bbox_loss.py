@@ -52,21 +52,21 @@ class MultiboxLoss(nn.Module):
         # print(pred_loc.shape)
         # print(gt_class_labels.shape)
         # print(gt_bbox_loc.shape)
-        batch_size, num_priors, locs = pred_loc.size()
-        # print('conf_shape', confidence.shape)
+        # batch_size, num_priors, locs = pred_loc.size()
+        # # print('conf_shape', confidence.shape)
         num_classes = confidence.shape[2]
-        l_pos = gt_class_labels > 0
-        l_posn = l_pos.sum(dim=1, keepdim=True).long().float()
-        mask = []  # avoid divide by 0
-        cnt = 0
-        for i in range(batch_size):
-            if l_posn[i, :] != 0:
-                mask.append(i)
-                cnt += 1
-        confidence = confidence[mask, :]
-        gt_class_labels = gt_class_labels[mask, :]
-        pred_loc = pred_loc[mask, :]
-        gt_bbox_loc = gt_bbox_loc[mask, :]
+        # l_pos = gt_class_labels > 0
+        # l_posn = l_pos.sum(dim=1, keepdim=True).long().float()
+        # mask = []  # avoid divide by 0
+        # cnt = 0
+        # for i in range(batch_size):
+        #     if l_posn[i, :] != 0:
+        #         mask.append(i)
+        #         cnt += 1
+        # confidence = confidence[mask, :]
+        # gt_class_labels = gt_class_labels[mask, :]
+        # pred_loc = pred_loc[mask, :]
+        # gt_bbox_loc = gt_bbox_loc[mask, :]
 
         with torch.no_grad():
             neg_class_prob = -F.log_softmax(confidence, dim=2)[:, :, self.neg_label_idx]  # select neg. class prob.
@@ -74,12 +74,17 @@ class MultiboxLoss(nn.Module):
             sel_flag = pos_flag | neg_flag
             num_pos = pos_flag.sum(dim=1, keepdim=True).long().float()
 
+            # print(num_pos)
+            # print(neg_flag.sum(dim=1, keepdim=True))
+            # print(gt_class_labels[pos_flag])
+            # print(gt_bbox_loc[pos_flag])
+
         # Loss for the classification
         # pos = gt_class_labels > 0  # box matched
         # # print(gt_class_labels.shape)
         # # print(pred_loc.shape)
         # pos_mask = pos.unsqueeze(2).expand_as(confidence)
-        print(torch.max(confidence))
+        # print(torch.max(confidence))
         #
         # num_classes = confidence.shape[2]
         #
@@ -115,7 +120,8 @@ class MultiboxLoss(nn.Module):
 
         # Loss for the classification
         sel_conf = confidence[sel_flag]
-        conf_loss = F.cross_entropy(sel_conf.reshape(-1, num_classes), gt_class_labels[sel_flag]) / num_pos
+        conf_loss = F.cross_entropy(sel_conf.reshape(-1, num_classes), gt_class_labels[sel_flag],reduction="sum")
+        # print('output fsdfsdfsdfsdfg',conf_loss)
 
         # Loss for the bounding box prediction
         # TODO: implementation on bounding box regression
@@ -131,15 +137,15 @@ class MultiboxLoss(nn.Module):
         pos_pred_locs = pred_loc[pos_mask].view(-1, 4)
         pos_loc_targets = gt_bbox_loc[pos_mask].view(-1, 4)
 
-        loc_huber_loss = F.smooth_l1_loss(pos_pred_locs, pos_loc_targets)
+        loc_huber_loss = F.smooth_l1_loss(pos_pred_locs, pos_loc_targets,reduction="sum")
+        # print('sdafsdfgsgwregreg',loc_huber_loss)
         # print("loc_huber_loss")
         # print(loc_huber_loss.shape)
         # print('loc_huber_loss',loc_huber_loss)
-        num_pos = num_pos.sum(dim=0).long().float()
-        conf_loss = conf_loss.sum(dim=0)
-        loc_huber_loss = loc_huber_loss.sum(dim=0)
-        print('conf_loss:', conf_loss)
-        print('loc_huber_loss', loc_huber_loss)
+        num_pos = pos_flag.data.sum().float()
+        # print('adasdaconf_loss:', conf_loss)
+        # print('asdasdasdasdasdasdasdadaloc_huber_loss', loc_huber_loss)
+        # print(num_pos)
         conf_loss = conf_loss/num_pos
         loc_huber_loss = loc_huber_loss/num_pos
 
