@@ -126,7 +126,7 @@ if __name__ == '__main__':
 
     random.shuffle(train_valid_datlist)
     total_training_validation_items = len(train_valid_datlist)
-    batch_size = 64
+    batch_size = 32
 
     # Training dataset.
     n_train_sets = training_ratio * total_training_validation_items
@@ -170,12 +170,12 @@ if __name__ == '__main__':
     criterion = bbox_loss.MultiboxLoss(bbox_pre_var=[0.1, 0.2])
 
     #optimizer = torch.optim.SGD(net.parameters(), lr=0.001, momentum=0.9,weight_decay=5e-4)
-    optimizer = torch.optim.Adam(net.parameters(), lr=1e-3)
+    optimizer = torch.optim.Adam(net.parameters(), lr=1e-4)
 
     print("start train")
 
     itr = 0
-    max_epochs = 200
+    max_epochs = 10
     train_losses = []
     valid_losses = []
 

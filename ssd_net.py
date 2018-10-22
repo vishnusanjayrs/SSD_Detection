@@ -14,7 +14,7 @@ class SSD(nn.Module):
         self.base_net = MobileNet()
 
         # The feature map will extracted from the end of following layers sections in (base_net).
-        self.base_output_sequence_indices = (0, 4, 6, 12, len(self.base_net.base_net))
+        self.base_output_sequence_indices = (0, 12, len(self.base_net.base_net))
 
         # Number of prior bounding box.
         self.num_prior_bbox = 8
@@ -53,26 +53,22 @@ class SSD(nn.Module):
 
         # Bounding box offset regressor.
         self.loc_regressor = nn.ModuleList([
-            nn.Conv2d(128, self.num_prior_bbox * 4, kernel_size=3, padding=1),
-            nn.Conv2d(256, self.num_prior_bbox * 4, kernel_size=3, padding=1),               # Layer 11
-            nn.Conv2d(512, self.num_prior_bbox * 4, kernel_size=3, padding=1),               # Layer 22
-            nn.Conv2d(1024, self.num_prior_bbox * 4, kernel_size=3, padding=1),              # Layer 27
-            nn.Conv2d(512, self.num_prior_bbox * 4, kernel_size=3, padding=1),               # Layer 29
-            nn.Conv2d(256, self.num_prior_bbox * 4, kernel_size=3, padding=1),               # Layer 31
-            nn.Conv2d(256, self.num_prior_bbox * 4, kernel_size=3, padding=1),               # Layer 33
-            nn.Conv2d(256, self.num_prior_bbox * 4, kernel_size=3, padding=1),               # Layer 35
+            nn.Conv2d(512, 8 * 4, kernel_size=3, padding=1),               # Layer 22
+            nn.Conv2d(1024, 8 * 4, kernel_size=3, padding=1),              # Layer 27
+            nn.Conv2d(512, 8 * 4, kernel_size=3, padding=1),               # Layer 29
+            nn.Conv2d(256, 4 * 4, kernel_size=3, padding=1),               # Layer 31
+            nn.Conv2d(256, 4 * 4, kernel_size=3, padding=1),               # Layer 33
+            nn.Conv2d(256, 4 * 4, kernel_size=3, padding=1),               # Layer 35
         ])
 
         # Bounding box classification confidence for each label.
         self.classifier = nn.ModuleList([
-            nn.Conv2d(128, self.num_prior_bbox * num_classes, kernel_size=3, padding=1),
-            nn.Conv2d(256, self.num_prior_bbox * num_classes, kernel_size=3, padding=1),     # Layer 11
-            nn.Conv2d(512, self.num_prior_bbox * num_classes, kernel_size=3, padding=1),     # Layer 13
-            nn.Conv2d(1024, self.num_prior_bbox * num_classes, kernel_size=3, padding=1),    # Layer 25
-            nn.Conv2d(512, self.num_prior_bbox * num_classes, kernel_size=3, padding=1),     # Layer 29
-            nn.Conv2d(256, self.num_prior_bbox * num_classes, kernel_size=3, padding=1),     # Layer 31
-            nn.Conv2d(256, self.num_prior_bbox * num_classes, kernel_size=3, padding=1),     # Layer 33
-            nn.Conv2d(256, self.num_prior_bbox * num_classes, kernel_size=3, padding=1),     # Layer 35
+            nn.Conv2d(512, 8 * num_classes, kernel_size=3, padding=1),     # Layer 13
+            nn.Conv2d(1024, 8 * num_classes, kernel_size=3, padding=1),    # Layer 25
+            nn.Conv2d(512, 8 * num_classes, kernel_size=3, padding=1),     # Layer 29
+            nn.Conv2d(256, 4* num_classes, kernel_size=3, padding=1),     # Layer 31
+            nn.Conv2d(256, 4 * num_classes, kernel_size=3, padding=1),     # Layer 33
+            nn.Conv2d(256, 4 * num_classes, kernel_size=3, padding=1),     # Layer 35
         ])
 
         # Load pretrained model.
@@ -127,7 +123,6 @@ class SSD(nn.Module):
         confidence_list = []
         loc_list = []
         result = inp
-
         # Forward the 'result' to base net for regressor & classifier.
         for index in range(0, len(self.base_output_sequence_indices) - 1):
             result = module_util.forward_from(
@@ -142,7 +137,7 @@ class SSD(nn.Module):
             result = module_util.forward_from(
                 self.additional_feature_extractor,
                 index, index + 1, result)
-            confidence, loc = self.feature_to_bbox(self.loc_regressor[index + 4], self.classifier[index + 4], result)
+            confidence, loc = self.feature_to_bbox(self.loc_regressor[index + 2], self.classifier[index + 2], result)
             confidence_list.append(confidence)
             loc_list.append(loc)
 

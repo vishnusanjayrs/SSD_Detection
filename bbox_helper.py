@@ -1,6 +1,7 @@
 import torch
 import math
 import numpy as np
+
 ''' Prior Bounding Box  ------------------------------------------------------------------------------------------------
 '''
 img_h = 300
@@ -39,8 +40,8 @@ def generate_prior_bboxes(prior_layer_cfg):
     # init k+1 bbox size to avoid error
 
     for feat_level_idx in range(0, len(prior_layer_cfg)):  # iterate each layers
-        #print("feat_level_idx")
-        #print(feat_level_idx)
+        # print("feat_level_idx")
+        # print(feat_level_idx)
         layer_cfg = prior_layer_cfg[feat_level_idx]
         layer_feature_dim = layer_cfg['feature_dim_hw']
         layer_aspect_ratio = layer_cfg['aspect_ratio']
@@ -49,7 +50,7 @@ def generate_prior_bboxes(prior_layer_cfg):
         # Todo: compute S_{k} (reference: SSD Paper equation 4.)
         sk = bbox_dim[0] / img_h
         if feat_level_idx == len(prior_layer_cfg) - 1:
-            #print("skplus1 here")
+            # print("skplus1 here")
             skplus1 = 1.04
         else:
             layer_cfgplus1 = prior_layer_cfg[feat_level_idx + 1]
@@ -64,31 +65,58 @@ def generate_prior_bboxes(prior_layer_cfg):
                 cx = (x + 0.5) / fk
                 cy = (y + 0.5) / fk
 
+                h = sk
+                w = sk
+                priors_bboxes.append([cx, cy, w, h])
+
+                h = math.sqrt(sk * skplus1)
+                w = math.sqrt(sk * skplus1)
+                priors_bboxes.append([cx, cy, w, h])
+
                 # Todo: generate prior bounding box with respect to the aspect ratio
                 for aspect_ratio in layer_aspect_ratio:
-                    if aspect_ratio == 1:
-                        h = sk
-                        w = sk
-                        priors_bboxes.append([cx, cy, w, h])
-                        h = math.sqrt(sk * skplus1)
-                        w = math.sqrt(sk * skplus1)
-                        priors_bboxes.append([cx, cy, w, h])
-                    else:
-                        h = sk / math.sqrt(aspect_ratio)
-                        w = sk * math.sqrt(aspect_ratio)
-                        priors_bboxes.append([cx, cy, w, h])
+                    h = sk / math.sqrt(aspect_ratio)
+                    w = sk * math.sqrt(aspect_ratio)
+                    priors_bboxes.append([cx, cy, w, h])
+                    priors_bboxes.append([cx, cy, h, w])
 
     # Convert to Tensor
     priors_bboxes = torch.tensor(priors_bboxes)
     priors_bboxes = torch.clamp(priors_bboxes, 0.0, 1.0)
     num_priors = priors_bboxes.shape[0]
-    #print(num_priors)
-    #print(priors_bboxes.dim)
+    # print(num_priors)
+    # print(priors_bboxes.dim)
 
     # [DEBUG] check the output shape
     assert priors_bboxes.dim() == 2
     assert priors_bboxes.shape[1] == 4
     return priors_bboxes.cuda()
+
+def intersect_ios(a: torch.Tensor, b: torch.Tensor):
+    """
+    # Compute the Intersection.
+    :param a: bounding boxes, dim: (n_items, 4) or (1, 4) if b is a reference.
+    :param b: bounding boxes, dim: (n_items, 4) or (1, 4) if b is a reference.
+    :return: intersections values: dim: (n_item).
+    """
+    # Compute the intersections recangle.
+    rec_a = center2corner(a)
+    rec_b = center2corner(b)
+    intersections = torch.cat((torch.max(rec_a, rec_b)[..., :2], torch.min(rec_a, rec_b)[..., 2:]), -1)
+
+    # Compute the intersections area.
+    x1 = intersections[..., 0]
+    y1 = intersections[..., 1]
+    x2 = intersections[..., 2]
+    y2 = intersections[..., 3]
+    sub1 = torch.sub(x2, x1)
+    sub2 = torch.sub(y2, y1)
+    sub1[sub1 < 0] = 0
+    sub2[sub2 < 0] = 0
+
+    intersections = torch.mul(sub1, sub2)
+
+    return intersections
 
 
 def intersect(a_box, b_box):
@@ -112,6 +140,37 @@ def area(box):
     box_area = ((box[:, 2] - box[:, 0]) * (box[:, 3] - box[:, 1]))
 
     return box_area
+
+def preprocess(a: torch.Tensor, b: torch.Tensor):
+    """
+    # Preprocess the tensor so both input will be in the same size.
+    :param a: bounding boxes, dim: (n_items, 4) or (1, 4) if b is a reference.
+    :param b: bounding boxes, dim: (n_items, 4) or (1, 4) if b is a reference.
+    :return: bounding box tensors with same dimension.
+    """
+    if a.shape == b.shape:
+        return a, b
+    if b.shape == torch.Size([4]):
+        b = b.unsqueeze(0)
+    b = b.repeat(a.shape[0], 1)
+
+    return a, b
+
+
+def ios(a: torch.Tensor, b: torch.Tensor):
+    """
+    # Compute the intersection over smaller object.
+    :param a: area, dim: (n_items, 4).
+    :param b: area, dim: (n_items, 4).
+    :return: intersection over smaller value: dim: (n_items).
+    """
+    a, b = preprocess(a, b)
+    intersections = intersect_ios(a, b)
+    area_a = torch.mul(a[..., 2], a[..., 3])
+    area_b = torch.mul(b[..., 2], b[..., 3])
+
+
+    return torch.div(intersections, torch.min(area_a, area_b))
 
 
 def iou(a: torch.Tensor, b: torch.Tensor):
@@ -162,32 +221,9 @@ def match_priors(prior_bboxes: torch.Tensor, gt_bboxes: torch.Tensor, gt_labels:
     assert prior_bboxes.dim() == 2
     assert prior_bboxes.shape[1] == 4
 
-    #print("In match_priors ")
+    # print("In match_priors ")
 
     gtpr_iou = iou(gt_bboxes, center2corner(prior_bboxes))
-
-    # iou_val, max_idx = gtpr_iou.max(0, keepdim=True)
-    # max_idx.squeeze_(0)
-    # iou_val.squeeze_(0)
-    # #print(iou_val.shape)
-    # #print(max_idx.shape)
-    #
-    # matched_boxes = gt_bboxes[max_idx]
-
-    # best_prior, best_prior_idx = gtpr_iou.max(1, keepdim=True)
-    #
-    # best_gt, best_gt_idx = gtpr_iou.max(0, keepdim=True)
-    #
-    # best_gt_idx.squeeze_(0)
-    # best_gt.squeeze_(0)
-    # best_prior_idx.squeeze_(1)
-    # best_prior.squeeze_(1)
-    # best_gt_idx.index_fill_(0, best_prior_idx, 2)  # ensure best prior
-    #
-    # # ensure every gt matches with its prior of max overlap
-    # for j in range(best_prior_idx.size(0)):
-    #     best_gt_idx[best_prior_idx[j]] = j
-    # matched_boxes = gt_bboxes[best_gt_idx]
 
     iou_val, max_idx = gtpr_iou.max(0)
     max_idx.squeeze_(0)
@@ -204,6 +240,8 @@ def match_priors(prior_bboxes: torch.Tensor, gt_bboxes: torch.Tensor, gt_labels:
 
     matched_labels = gt_labels[max_idx]
     matched_labels[iou_val < iou_threshold] = 0  # using iou_threshold to set background
+    idx = matched_labels < 1
+    loc[idx] = torch.Tensor([0.0, 0.0, 0.0, 0.0])
 
     # print("matched ground truth")
     # print(np.unique(np.array(matched_labels,dtype=np.float32)))

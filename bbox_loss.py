@@ -4,7 +4,7 @@ import torch
 from torch.autograd import Variable
 
 
-def hard_negative_mining(predicted_prob, gt_label, neg_pos_ratio=3.0):
+def hard_negative_mining(predicted_prob, gt_label, neg_pos_ratio=1.0):
     """
     The training sample has much more negative samples, the hard negative mining and produce balanced 
     positive and negative examples.
@@ -29,7 +29,7 @@ def hard_negative_mining(predicted_prob, gt_label, neg_pos_ratio=3.0):
 
 
 class MultiboxLoss(nn.Module):
-    def __init__(self, bbox_pre_var, iou_threshold=0.5, neg_pos_ratio=3.0):
+    def __init__(self, bbox_pre_var, iou_threshold=0.5, neg_pos_ratio=1.0):
         super(MultiboxLoss, self).__init__()
         self.bbox_center_var, self.bbox_size_var = bbox_pre_var[:2], bbox_pre_var[2:]
         self.iou_thres = iou_threshold
@@ -52,7 +52,7 @@ class MultiboxLoss(nn.Module):
         # print(pred_loc.shape)
         # print(gt_class_labels.shape)
         # print(gt_bbox_loc.shape)
-        # batch_size, num_priors, locs = pred_loc.size()
+        batch_size, num_priors, locs = pred_loc.size()
         # # print('conf_shape', confidence.shape)
         num_classes = confidence.shape[2]
         # l_pos = gt_class_labels > 0
@@ -78,6 +78,9 @@ class MultiboxLoss(nn.Module):
             # print(neg_flag.sum(dim=1, keepdim=True))
             # print(gt_class_labels[pos_flag])
             # print(gt_bbox_loc[pos_flag])
+            # print(gt_class_labels[neg_flag])
+            # print(gt_bbox_loc[neg_flag])
+
 
         # Loss for the classification
         # pos = gt_class_labels > 0  # box matched
@@ -94,8 +97,8 @@ class MultiboxLoss(nn.Module):
         #     if num_pos[i, :] != 0:
         #         mask.append(i)
         #         cnt += 1
-        # if cnt == 0:
-        #     return Variable(torch.Tensor([0])), Variable(torch.Tensor([0]))
+        if pos_flag.data.sum().float() == 0.0:
+            return Variable(torch.Tensor([0])), Variable(torch.Tensor([0]))
         # num_pos = num_pos[mask, :]
         # sel_flag = sel_flag[mask, :]
         # confidence = confidence[mask, :]
@@ -126,13 +129,13 @@ class MultiboxLoss(nn.Module):
         # Loss for the bounding box prediction
         # TODO: implementation on bounding box regression
 
-        pos = gt_class_labels > 0  # box matched
+        # pos = gt_class_labels > 0  # box matched
         # print(pos.sum(dim=1, keepdim=True).long().float())
         # print(gt_class_labels.shape)
         # print(pred_loc.shape)
         # pred_loc = pred_loc[mask, :]
         # gt_bbox_loc = gt_bbox_loc[mask, :]
-        pos_mask = pos.unsqueeze(2).expand_as(pred_loc)
+        pos_mask = pos_flag.unsqueeze(2).expand_as(pred_loc)
         # print(pos_mask.shape)
         pos_pred_locs = pred_loc[pos_mask].view(-1, 4)
         pos_loc_targets = gt_bbox_loc[pos_mask].view(-1, 4)
