@@ -28,8 +28,8 @@ validation_ratio = 0.5
 
 if __name__ == '__main__':
 
-    # polygons_label_path = "/home/datasets/full_dataset_labels/train_extra"
-    # images_path = "/home/datasets/full_dataset/train_extra"
+    polygons_label_path = "/home/datasets/full_dataset_labels/train_extra"
+    images_path = "/home/datasets/full_dataset/train_extra"
     # polygons_label_path = os.path.join(current_directory, "cityscapes_samples_labels")
     # images_path = os.path.join(current_directory, "cityscapes_samples")
 
@@ -81,6 +81,8 @@ if __name__ == '__main__':
     # #     lsit.append(image_label_list[i]['label'])
     # #
     # # print(np.asarray(set(lsit)))
+    #
+    #
     # curr_folder = 'a'
     # train_valid_datlist = []
     # for i in range(0, len(images)):
@@ -103,8 +105,26 @@ if __name__ == '__main__':
     #                 bbox = image_label_list[i]['bbox']
     #                 b_boxes.append(bbox)
     #                 labels.append(label)
-    #             elif image_label_list[i]['label'] == 'person':
+    #             elif image_label_list[i]['label'] == 'cargroup':
+    #                 cnt += 1
     #                 label = 2
+    #                 bbox = image_label_list[i]['bbox']
+    #                 b_boxes.append(bbox)
+    #                 labels.append(label)
+    #             elif image_label_list[i]['label'] == 'person':
+    #                 cnt += 1
+    #                 label = 3
+    #                 bbox = image_label_list[i]['bbox']
+    #                 b_boxes.append(bbox)
+    #                 labels.append(label)
+    #             elif image_label_list[i]['label'] == 'persongroup':
+    #                 cnt += 1
+    #                 label = 4
+    #                 bbox = image_label_list[i]['bbox']
+    #                 b_boxes.append(bbox)
+    #                 labels.append(label)
+    #             elif image_label_list[i]['label'] == 'traffic sign':
+    #                 label = 5
     #                 bbox = image_label_list[i]['bbox']
     #                 b_boxes.append(bbox)
     #                 labels.append(label)
@@ -112,10 +132,12 @@ if __name__ == '__main__':
     #         continue
     #     train_valid_datlist.append({'image_path': image_path, 'labels': labels, 'bboxes': b_boxes})
 
-    outfile = os.path.join(current_directory, 'saved_list1')
+    outfile = os.path.join(current_directory, 'saved_list2')
 
     # with open(outfile, 'wb') as fp:
     #     pickle.dump(train_valid_datlist, fp)
+    #
+    # exit()
 
     with open(outfile, 'rb') as fp:
         train_valid_datlist = pickle.load(fp)
@@ -126,7 +148,7 @@ if __name__ == '__main__':
 
     random.shuffle(train_valid_datlist)
     total_training_validation_items = len(train_valid_datlist)
-    batch_size = 32
+    batch_size = 16
 
     # Training dataset.
     n_train_sets = training_ratio * total_training_validation_items
@@ -163,14 +185,14 @@ if __name__ == '__main__':
     print('Total validation items', len(valid_dataset), ', Total validation batches per epoch:', len(valid_data_loader))
 
     # train_batch_idx, (train_input, train_label) = next(enumerate(train_data_loader))
-    net = ssd_net.SSD(num_classes=3)
+    net = ssd_net.SSD(num_classes=6)
 
     net = net.cuda()
 
-    criterion = bbox_loss.MultiboxLoss(bbox_pre_var=[0.1, 0.2])
+    criterion = bbox_loss.MultiboxLoss()
 
     #optimizer = torch.optim.SGD(net.parameters(), lr=0.001, momentum=0.9,weight_decay=5e-4)
-    optimizer = torch.optim.Adam(net.parameters(), lr=1e-4)
+    optimizer = torch.optim.Adam(net.parameters(), lr=1e-2)
 
     print("start train")
 
@@ -181,12 +203,29 @@ if __name__ == '__main__':
 
     start_time = time.time()
 
+    model_path = os.path.join(current_directory, 'SSDnet_crop1.pth')
+
+    net_state = torch.load(model_path)
+
+    net.load_state_dict(net_state)
+
     curr_epoch = 0
 
-    for param in net.base_net.base_net:
-        param.requires_grad = False
-
-
+    prior_layer_cfg = [{'layer_name': 'Conv11', 'feature_dim_hw': (19, 19), 'bbox_size': (60, 60),
+                        'aspect_ratio': [2, 3, 4]},
+                       {'layer_name': 'Conv13', 'feature_dim_hw': (10, 10), 'bbox_size': (102, 102),
+                        'aspect_ratio': [2, 3, 4]},
+                       {'layer_name': 'Conv14_2', 'feature_dim_hw': (5, 5), 'bbox_size': (144, 144),
+                        'aspect_ratio': [2, 3, 4]},
+                       {'layer_name': 'Conv15_2', 'feature_dim_hw': (3, 3), 'bbox_size': (186, 186),
+                        'aspect_ratio': [2]},
+                       {'layer_name': 'Conv16_2', 'feature_dim_hw': (2, 2), 'bbox_size': (228, 228),
+                        'aspect_ratio': [2]},
+                       {'layer_name': 'Conv16_2', 'feature_dim_hw': (1, 1), 'bbox_size': (270, 270),
+                        'aspect_ratio': [2]}
+                       ]
+    prior_bboxes = bbox_helper.generate_prior_bboxes(prior_layer_cfg)
+    prior_bboxes = prior_bboxes.unsqueeze(0)
 
     for epoch_idx in range(0, max_epochs):
         for train_batch_idx, (images, loc_targets, conf_targets) in enumerate(train_data_loader):
@@ -204,10 +243,8 @@ if __name__ == '__main__':
 
             # Compute loss
             # forward(self, confidence, pred_loc, gt_class_labels, gt_bbox_loc):
-            c_loss, l_loss = criterion(conf_preds, loc_preds, conf_targets, loc_targets)
+            loss = criterion(conf_preds, loc_preds, conf_targets, loc_targets)
 
-            # Do the backward and compute gradients
-            loss = c_loss + l_loss
 
             if loss == Variable(torch.Tensor([0])):
                 continue
@@ -222,7 +259,7 @@ if __name__ == '__main__':
             if train_batch_idx % 50 == 0:
                 print('Epoch: %d Itr: %d Loss: %f' % (epoch_idx, itr, loss.item()))
                 print('elasped time:', time.time() - start_time)
-                print('Training  Loss', c_loss, l_loss)
+                print('Training  Loss', loss)
 
                 # Run the validation every 200 iteration:
             if train_batch_idx % 200 == 0:
@@ -235,10 +272,18 @@ if __name__ == '__main__':
                     valid_img = Variable(valid_img.cuda())  # use Variable(*) to allow gradient flow
                     v_pred_conf, v_pred_locs = net.forward(valid_img)  # forward once
 
-                    index = valid_labels[0] > 0
-                    print(valid_labels[0,index])
-                    out = F.softmax(v_pred_conf[0]).detach()
-                    print('postives : ', out[index])
+                    for i in range(batch_size):
+                        index = valid_labels[i] > 0
+                        if index.data.sum() > 0:
+                            print(valid_labels[i,index])
+                            out = F.softmax(v_pred_conf[i]).detach()
+                            print('postives : ', out[index])
+                            locs = v_pred_locs[i]
+                            print('locs', locs[index])
+                            locs = locs.unsqueeze(0)
+                            bbox = bbox_helper.loc2bbox(locs,prior_bboxes)
+                            print('bboxes',bbox[0,index])
+                            break
 
 
 
@@ -246,9 +291,8 @@ if __name__ == '__main__':
                     # Compute loss
                     valid_locs = Variable(valid_locs.cuda())
                     valid_labels = Variable(valid_labels.cuda()).long()
-                    valid_c_loss, valid_l_loss = criterion(v_pred_conf, v_pred_locs, valid_labels, valid_locs)
-                    print('Validation Loss', valid_c_loss,valid_l_loss)
-                    valid_loss = valid_c_loss + valid_l_loss
+                    valid_loss = criterion(v_pred_conf, v_pred_locs, valid_labels, valid_locs)
+                    print('Validation Loss', valid_loss)
                     valid_loss_set.append(valid_loss.item())
 
                     valid_itr += 1
@@ -262,8 +306,8 @@ if __name__ == '__main__':
 
             if epoch_idx != curr_epoch:
                 net_state = net.state_dict()  # serialize trained model
-                torch.save(net_state, '/home/vramiyas/SSDnet_cudal1.pth')  # save to disk
+                torch.save(net_state, '/home/vramiyas/SSDnet_crop1.pth')  # save to disk
 
             curr_epoch = epoch_idx
     net_state = net.state_dict()  # serialize trained model
-    torch.save(net_state, '/home/vramiyas/SSDnet_cudal1.pth')  # save to disk
+    torch.save(net_state, '/home/vramiyas/SSDnet_crop1.pth')  # save to disk

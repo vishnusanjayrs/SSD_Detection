@@ -5,7 +5,7 @@ import numpy as np
 ''' Prior Bounding Box  ------------------------------------------------------------------------------------------------
 '''
 img_h = 300
-img_w = 300
+img_w = 600
 
 
 def generate_prior_bboxes(prior_layer_cfg):
@@ -92,6 +92,7 @@ def generate_prior_bboxes(prior_layer_cfg):
     assert priors_bboxes.shape[1] == 4
     return priors_bboxes.cuda()
 
+
 def intersect_ios(a: torch.Tensor, b: torch.Tensor):
     """
     # Compute the Intersection.
@@ -120,16 +121,24 @@ def intersect_ios(a: torch.Tensor, b: torch.Tensor):
 
 
 def intersect(a_box, b_box):
+    # compute intersection area between 2 bounding boxes
+    # inpputs should be in corner form
+
+    # get size of input boxes
     A = a_box.size(0)
     B = b_box.size(0)
 
+    # compute intersection points between 2 rectangles in both dimensions
+    # expand for size of input bboxes to get all intersects of all combinations
     max_xy = torch.min(a_box[:, 2:].unsqueeze(1).expand(A, B, 2),
                        b_box[:, 2:].unsqueeze(0).expand(A, B, 2))
     min_xy = torch.max(a_box[:, :2].unsqueeze(1).expand(A, B, 2),
                        b_box[:, :2].unsqueeze(0).expand(A, B, 2))
 
+    # get the intersection rectangle dimensions and clamp negative values
     inter = torch.clamp((max_xy - min_xy), min=0)
 
+    # calculate area
     intersect_area = inter[:, :, 0] * inter[:, :, 1]
 
     return intersect_area
@@ -140,6 +149,7 @@ def area(box):
     box_area = ((box[:, 2] - box[:, 0]) * (box[:, 3] - box[:, 1]))
 
     return box_area
+
 
 def preprocess(a: torch.Tensor, b: torch.Tensor):
     """
@@ -169,7 +179,6 @@ def ios(a: torch.Tensor, b: torch.Tensor):
     area_a = torch.mul(a[..., 2], a[..., 3])
     area_b = torch.mul(b[..., 2], b[..., 3])
 
-
     return torch.div(intersections, torch.min(area_a, area_b))
 
 
@@ -187,7 +196,7 @@ def iou(a: torch.Tensor, b: torch.Tensor):
     assert b.dim() == 2
     assert b.shape[1] == 4
 
-    # TODO: implement IoU of two bounding box
+    # IoU of two bounding box
     # area (A union B) = area(A) + area(B) = area(A intersect B)
     inter = intersect(a, b)
     a_area = area(a).unsqueeze(1).expand_as(inter)
@@ -222,14 +231,16 @@ def match_priors(prior_bboxes: torch.Tensor, gt_bboxes: torch.Tensor, gt_labels:
     assert prior_bboxes.shape[1] == 4
 
     # print("In match_priors ")
-
+    # get iou between al ground truth and prior boxes
     gtpr_iou = iou(gt_bboxes, center2corner(prior_bboxes))
 
+    # get maximun iou and index of groundtruth for each prior box
     iou_val, max_idx = gtpr_iou.max(0)
     max_idx.squeeze_(0)
     iou_val.squeeze_(0)
     matched_boxes = gt_bboxes[max_idx]
 
+    # encode variances and convert into locations
     variances = [0.1, 0.2]
     cxcy = (matched_boxes[:, :2] + matched_boxes[:, 2:]) / 2 - prior_bboxes[:, :2]  # [8732,2]
     cxcy /= variances[0] * prior_bboxes[:, 2:]
@@ -238,14 +249,10 @@ def match_priors(prior_bboxes: torch.Tensor, gt_bboxes: torch.Tensor, gt_labels:
 
     loc = torch.cat([cxcy, wh], 1)
 
+    # encode the labels and set the labels to zero where iou is less than threshold
     matched_labels = gt_labels[max_idx]
     matched_labels[iou_val < iou_threshold] = 0  # using iou_threshold to set background
-    idx = matched_labels < 1
-    loc[idx] = torch.Tensor([0.0, 0.0, 0.0, 0.0])
-
-    # print("matched ground truth")
-    # print(np.unique(np.array(matched_labels,dtype=np.float32)))
-    # print(np.unique(np.array(gt_labels, dtype=np.float32)))
+    loc[iou_val < iou_threshold] = 0.0
 
     # [DEBUG] Check if output is the desire shape
     assert matched_boxes.dim() == 2
@@ -260,7 +267,7 @@ def match_priors(prior_bboxes: torch.Tensor, gt_bboxes: torch.Tensor, gt_labels:
 '''
 
 
-def nms_bbox(bbox_loc, bbox_confid_scores, overlap_threshold=0.5, prob_threshold=0.6):
+def nms_bbox(bbox_loc, bbox_confid_scores, overlap_threshold=0.5, prob_threshold=0.9):
     """
     Non-maximum suppression for computing best overlapping bounding box for a object
     Use this function when testing the samples.
@@ -280,18 +287,24 @@ def nms_bbox(bbox_loc, bbox_confid_scores, overlap_threshold=0.5, prob_threshold
 
     sel_bbox = []
 
-    # Todo: implement nms for filtering out the unnecessary bounding boxes
     # convert bboxes from center format to corner format
-    bbox_loc_c = center2corner(bbox_loc)
     num_classes = bbox_confid_scores.shape[1]
     for class_idx in range(0, num_classes):
         # Tip: use prob_threshold to set the prior that has higher scores and filter out the low score items for fast
         # computation
         # filtering scores using probability threshold
+        bbox_loc_c = bbox_loc
+        print(class_idx)
+        if class_idx == 0:  # ignoring background case
+            continue
         bbx_class_scores = bbox_confid_scores[:, class_idx]
+        print(bbx_class_scores.shape)
         filtered_pos = bbx_class_scores > prob_threshold
-        mask = filtered_pos.unsqueeze_(1).expand_as(bbx_class_scores)
-        prob_fil_scores = bbx_class_scores[mask]
+        prob_fil_scores = bbx_class_scores[filtered_pos]
+        bbox_loc_c = bbox_loc_c[filtered_pos,:]
+        print(prob_fil_scores.shape)
+        if filtered_pos.data.sum() == 0:
+            continue
 
         pick = []
         l = bbox_loc_c[:, 0]
@@ -303,11 +316,13 @@ def nms_bbox(bbox_loc, bbox_confid_scores, overlap_threshold=0.5, prob_threshold
         areas = (r - l) * (b - t)
         sorted_scores, order = prob_fil_scores.sort(0, descending=True)
 
+        print(sorted_scores, order)
+
         while order.numel() > 0:
             i = order[0]
-            pick.append(i)
+            pick.append(int(i))
 
-            if order.numel == 1:
+            if order.numel() == 1:
                 break
 
             xx1 = l[order[1:]].clamp(min=l[i])
@@ -325,8 +340,8 @@ def nms_bbox(bbox_loc, bbox_confid_scores, overlap_threshold=0.5, prob_threshold
             if ids.numel() == 0:
                 break
             order = order[ids + 1]
+        sel_bbox.append(bbox_loc_c[pick])
 
-        sel_bbox = bbox_loc[pick]
 
     return sel_bbox
 
@@ -404,5 +419,5 @@ def corner2center(corner):
     :param center: bounding box in corner form (x,y) (x+w, y+h)
     :return: bounding box in center form (cx, cy, w, h)
     """
-    return torch.cat([corner[..., 2:] + corner[..., :2] / 2,
+    return torch.cat([corner[..., 2:] / 2  + corner[..., :2] / 2,
                       corner[..., 2:] - corner[..., :2]], dim=-1)

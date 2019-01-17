@@ -18,6 +18,7 @@ class CityScapeDataset(Dataset):
         self.dataset_list = dataset_list
         self.image_size = 300
         self.imgWidth, self.imgHeight, self.crop_coordinate = None, None, None
+        self.ios_index =None
 
         # TODO: implement prior bounding box
         """
@@ -82,59 +83,41 @@ class CityScapeDataset(Dataset):
         labels = torch.Tensor(labels).cuda()
         locations = torch.Tensor(item['bboxes']).cuda()
         bbox = np.array(item['bboxes'])
-        # print(self.bboxes.shape)
 
         image = Image.open(image_path)
-        #
-        # plt.imshow(img)
-        # plt.show()
-
-        # img = self.crop(img, bbox, labels)
-
-        # print('img_size',img.size)
 
         self.imgWidth, self.imgHeight = image.size
         self.resize_ratio = min(self.imgHeight / 300., self.imgWidth / 300.)
 
         locations = helper.corner2center(locations)
 
+
         image = self.resize(image)
         locations = self.resize(locations)
 
-        # print('PRINT3')
 
         # Prepare image array first to update crop.
         image = self.crop(image)
         image = self.brighten(image)
         image = self.normalize(image)
 
-        # print('PRINT4')
 
         # Prepare labels second to apply crop.
         locations = self.crop(locations)
         locations = self.normalize(locations)
-        # bboxes /= torch.Tensor([w, h, w, h]).expand_as(bboxes)
-
-        # resize image
-        # img = img.resize((self.image_size, self.image_size), Image.ANTIALIAS)
-
-        # plt.imshow(img)
-        # plt.show()
-        # normalize_img
-        # img = np.asarray(img, dtype=np.float32)
-        # # normalise the image pixels to (-1,1)
-        # img = np.subtract(img, self.mean)
-        # img = np.divide(img, self.std)
 
         # convert to tensor
         img_tensor = image.view((image.shape[2], image.shape[0], image.shape[1]))
         img_tensor = img_tensor.cuda()
+
+        labels = labels[self.ios_index]
 
         # 4. Do the augmentation if needed. e.g. random clip the bounding box or flip the bounding box
 
         # 5. Do the matching prior and generate ground-truth labels as well as the boxes
         bbox_tensor, bbox_label_tensor = match_priors(self.prior_bboxes, helper.center2corner(locations), labels,
                                                       iou_threshold=0.5)
+
 
         # [DEBUG] check the output.
         # assert isinstance(bbox_label_tensor, torch.Tensor)
@@ -143,42 +126,7 @@ class CityScapeDataset(Dataset):
         # assert bbox_tensor.shape[1] == 4
         # assert bbox_label_tensor.dim() == 1
         # assert bbox_label_tensor.shape[0] == bbox_tensor.shape[0]
-
         return img_tensor, bbox_tensor, bbox_label_tensor
-
-    # def crop(self,image, bbox, label):
-    #     w, h = image.size
-    #     print(bbox)
-    #     print('image_size insde crop :',w,h)
-    #     xmin = min(bbox[:, 0])
-    #     xmax = max(bbox[:, 2])
-    #     ymin = min(bbox[:, 1])
-    #     ymax = max(bbox[:, 3])
-    #     print('xmin', xmin)
-    #     print('xmax', xmax)
-    #     if xmax - xmin < h:
-    #         print("image within range")
-    #         max_dim = max((xmax - xmin),(ymax-ymin))
-    #         size = randint(max_dim,h)
-    #         print(size)
-    #         add_x = size - (xmax - xmin)
-    #         add_y = size - (ymax - ymin)
-    #         rand = np.random.dirichlet(np.ones(2), size=1)
-    #         dec_l = round(add_x * rand[0, 0])
-    #         inc_r = round(add_x * rand[0, 1])
-    #         dec_t = round(add_y * rand[0, 0])
-    #         inc_b = round(add_y * rand[0, 1])
-    #         if xmin - dec_l < 0:
-    #             l=0
-    #             r=size
-    #
-    #
-    #         crops = np.array([l, t, r, b])
-    #         print(crops)
-    #         crop_img = image.crop(crops)
-    #         return crop_img
-    #     else:
-    #         return image
 
     def resize(self, inp):
         # Case for image input.
@@ -215,9 +163,11 @@ class CityScapeDataset(Dataset):
             while not found:
                 cnt += 1
                 if cnt > 300:
-                    self.crop_coordinates = torch.Tensor([0, 0, 300, 300])
-                    return image[0:300, 0:300, :]
-
+                    self.crop_coordinates = torch.Tensor([150, 0, 450, 300])
+                    image = image[
+                            int(self.crop_coordinates[1]):int(self.crop_coordinates[3]),
+                            int(self.crop_coordinates[0]):int(self.crop_coordinates[2]), :]
+                    break
                 crop = random.randint(0, self.imgWidth - 300)
                 self.crop_coordinates = torch.Tensor([crop, 0, crop + 300, 300])
                 for location in self.locations:
@@ -237,7 +187,10 @@ class CityScapeDataset(Dataset):
 
         # Set locations to 0 if the ios is too small.
         ios = helper.ios(locations, torch.Tensor([150, 150, 300, 300]))
+        self.ios_index = ios > self.cropping_ios_threshold
         locations[ios <= self.cropping_ios_threshold] = 0
+
+        locations = locations[self.ios_index]
 
         # Clip the location.
         locations = helper.center2corner(locations)
